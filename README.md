@@ -1,10 +1,9 @@
 # ⚡ Negative Price Calculator
 
-A simple web application to analyze electricity prices and solar production data, with focus on negative price detection and cost analysis for solar producers in Sweden.
+Analyze your solar export against historical Swedish spot prices — including **negative prices** — and see what your electricity was actually worth. The web app runs **entirely in your browser**: your production file never leaves your device.
 
-**[Quick Start →](QUICKSTART.md)** | **[Live Demo](http://localhost:8080)** (after running locally)
+**[🔗 Live app →](https://huggek.github.io/negative-price-calc/)**
 
-<img src="https://img.shields.io/badge/Python-3.12+-blue.svg" alt="Python 3.12+">
 <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License">
 <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome">
 
@@ -12,263 +11,132 @@ A simple web application to analyze electricity prices and solar production data
 
 ## 🎯 What is this?
 
-When you have solar panels, you often sell excess electricity back to the grid. But sometimes electricity prices go **negative** - meaning you actually pay to export your energy! This tool helps you:
+When you have solar panels you sell excess electricity to the grid. But spot prices sometimes go **negative** — meaning you pay to export. Since the 60 öre/kWh tax credit ended on 1 January 2026, the spot price alone decides what your export is worth. This tool helps you:
 
-- 📊 **Analyze your production data** - Upload your solar production CSV/Excel file
-- 💸 **Detect negative price periods** - See when your export cost you money
-- 📈 **Visualize the impact** - Interactive charts showing monthly patterns
-- 🤖 **Get AI insights** (optional) - Swedish-language explanations of your analysis
-- 💾 **Export results** - Download detailed Excel reports
+- 📊 **Analyze your production** — upload your hourly / 15-minute / daily export CSV
+- 💸 **Detect negative-price periods** — see when exporting cost you money
+- ⏱️ **Catch sub-hour peaks** — full **15-minute** resolution (the Swedish market moved to 15-min on 2025-10-01)
+- 🔌 **Check your grid connection** — how long export was pinned at your main-fuse limit ("flat peaks")
+- 🏠 **Value self-consumption** — using payment/VAT settings (spot + energy tax + grid fee) × (1 + VAT)
+- 🤖 **Get an AI summary** (optional) — Swedish-language, generated in your browser with your own key
+- 💾 **Export results** — download JSON or CSV
 
-## ✨ Key Features
+## ✨ Key features
 
-- **🔌 No API keys required** - Uses free [Sourceful Price API](https://docs.sourceful.energy/developer/price-api)
-- **🌍 Webapp interface** - Simple drag-and-drop file upload
-- **🇸🇪 Swedish electricity areas** - Supports SE_1 through SE_4
-- **🤖 Optional AI explanations** - Add OpenAI key for AI-powered insights
-- **📊 Visual analytics** - Charts and metrics at a glance
-- **💾 Excel export** - Detailed analysis export
-- **🚀 Easy deployment** - Docker support included
+- **🔒 Private & serverless** — all parsing, price-matching and analysis run client-side; nothing is uploaded
+- **🔌 No API key for prices** — uses the free [Sourceful Price API](https://docs.sourceful.energy/developer/price-api) (a wrapper around ENTSO-E data)
+- **⏱️ Interval-aware** — correctly handles any mix of hourly / 15-minute / daily data via overlap allocation
+- **🇸🇪 Swedish bidding zones** — SE1–SE4
+- **🔌 Grid-connection analysis** — main-fuse flat-peak detection (3-phase, 400 V)
+- **🏠 Self-consumption valuation** — configurable VAT, energy tax and grid fee
+- **🤖 Optional AI summary** — via OpenRouter, using a key you supply (stored only in your browser)
+- **📨 Optional newsletter** — opt in to Sourceful Energy updates (never required to run an analysis)
 
-## 🚀 Quick Start
+## 📖 How to use
 
-### Prerequisites
+1. **Get your export data** — log in to your grid/energy company's portal and export your meter data as CSV.
+2. **Upload the file** — hourly, 15-minute or daily data is detected automatically.
+3. **Choose your bidding zone** — SE1–SE4.
+4. **(Optional) settings** — main fuse size (A), VAT %, energy tax and grid fee (kr/kWh), and the AI summary toggle.
+5. **Click "Analysera"** — the report appears directly in the browser. Download it as JSON or CSV.
 
-- Python 3.12+
-- [uv](https://docs.astral.sh/uv/) package manager
+Sample files live in [`data/samples/`](data/samples/). The browser app reads **CSV** (export Excel files as CSV first); the Python CLI also reads Excel.
 
-### Install & Run (3 steps!)
+## 🧮 What the analysis shows
 
-```bash
-# 1. Clone the repository
-git clone https://github.com/srcfl/negative-price-calc.git
-cd negative-price-calc
+- **Total export & revenue** (SEK) at realized spot prices
+- **Negative-price exposure** — hours, kWh and cost of exporting at negative prices
+- **Timing discount** — how far below the market average you were paid
+- **Grid connection** — peak power, and time/energy at the main-fuse limit (when a fuse size is given)
+- **Self-consumption value** — worth of a kWh used yourself vs. exported (when VAT/fees are given)
+- **Monthly breakdown** chart
 
-# 2. Install dependencies
-uv sync
+## 💰 Price data
 
-# 3. Start the webapp
-uv run python app.py
+Prices come from the **Sourceful Price API** — a free, no-key wrapper around ENTSO-E day-ahead data:
+
+```
+GET https://mainnet.srcful.dev/price/electricity/{ZONE}?date=YYYY-MM-DD
 ```
 
-Open your browser and go to `http://localhost:8080` 🎉
-
-**That's it!** No API keys needed for basic analysis.
-
-### Optional: Enable AI Explanations
-
-Want AI-powered insights? Just add your OpenAI API key:
-
-```bash
-# Copy environment template
-cp .env.example .env
-
-# Edit .env and add: OPENAI_API_KEY=your_key_here
-```
-
-Restart the webapp and AI explanations will appear automatically!
-
-## 🐳 Docker Deployment
-
-```bash
-# Build and run with docker-compose
-docker-compose up --build
-
-# Open http://localhost:8080
-```
-
-## 🚂 Railway Deployment
-
-Deploy to [Railway](https://railway.app) with one click:
-
-### Backend API
-
-1. Create new project on Railway
-2. Connect your GitHub repo
-3. Set root directory to `/` (project root)
-4. Add environment variables:
-   - `OPENAI_API_KEY` (optional, for AI insights)
-   - `CORS_ORIGINS` (your frontend URL, e.g., `https://your-frontend.railway.app`)
-
-### Frontend
-
-1. Create another service in the same project
-2. Set root directory to `/frontend`
-3. Add environment variable:
-   - `NEXT_PUBLIC_API_URL` (your backend URL, e.g., `https://your-backend.railway.app`)
-
-### Environment Variables for Railway
-
-| Variable | Service | Description |
-|----------|---------|-------------|
-| `OPENAI_API_KEY` | Backend | Optional - enables AI explanations |
-| `CORS_ORIGINS` | Backend | Frontend URL(s), comma-separated |
-| `NEXT_PUBLIC_API_URL` | Frontend | Backend API URL |
-
-## 📖 How to Use
-
-1. **Upload your data**: CSV or Excel file with solar production (hourly or daily)
-2. **Select electricity area**: SE_1, SE_2, SE_3, or SE_4
-3. **Click "Analysera"**: Results appear in seconds
-4. **Review insights**: See negative price impact, timing losses, and more
-5. **Export if needed**: Download Excel report for deeper analysis
-
-### Supported File Formats
-
-The tool intelligently handles various CSV/Excel formats. Your file should have:
-- **Timestamp/Date column**: DateTime or date values
-- **Production column**: Energy produced in kWh
-
-Common column names are automatically detected (timestamp, date, production, kwh, etc.)
-
-### Example Files
-
-Try it out with sample files in `data/samples/` directory!
+Returned in EUR/MWh at the market resolution (15-minute from 2025-10-01, hourly before) and converted to SEK/kWh in the app. Docs: https://docs.sourceful.energy/developer/price-api
 
 ## 🏗️ Architecture
 
-### Simple Structure
-
 ```
 negative-price-calc/
-├── app.py                      # Flask webapp (start here!)
-├── cli/                        # Command-line interface
-│   └── main.py                # CLI entrypoint
-├── core/                       # Analysis engine
-│   ├── price_fetcher.py       # Sourceful API integration
-│   ├── production_loader.py   # CSV/Excel parser
-│   └── price_analyzer.py      # Core analysis logic
-├── templates/                  # HTML templates
-│   └── index.html             # Main webapp UI
-└── data/                       # Data storage
-    ├── price_data.db          # SQLite price cache
-    └── samples/               # Example files
+├── frontend/                     # The deployed web app (Next.js, static export)
+│   └── src/
+│       ├── app/page.tsx          # Upload UI, settings, results
+│       ├── components/           # Results cards, charts, terminal, upload
+│       └── lib/                  # Client-side engine:
+│           ├── parseProduction.ts  #   CSV parsing (Swedish formats)
+│           ├── prices.ts           #   Sourceful Price API client
+│           ├── analyze.ts          #   interval-aware analysis (overlap allocation)
+│           └── aiSummary.ts        #   optional OpenRouter summary (browser, BYO key)
+├── core/                         # Python library / CLI (feature parity)
+│   ├── price_analyzer.py         #   interval-aware analysis + fuse flat-peak
+│   ├── intervals.py              #   granularity helpers
+│   ├── price_fetcher.py          #   ENTSO-E fetch (needs ENTSOE_API_KEY) + SQLite cache
+│   └── db_manager.py             #   price cache (resolution-aware)
+├── cli/main.py                   # `se-cli` command-line interface
+├── app.py                        # Optional Flask API (not used by the static app)
+└── data/samples/                 # Example production files
 ```
 
-### Technology Stack
+The **web app is fully client-side** and needs no backend. The **Python CLI/library** mirrors the analysis (15-minute intervals, fuse flat-peak, VAT/self-consumption) for offline/scripted use.
 
-- **Backend**: Flask + Python 3.12
-- **Price Data**: [Sourceful API](https://docs.sourceful.energy/developer/price-api) (free, no key required)
-- **AI**: OpenAI GPT (optional)
-- **Storage**: SQLite for price caching
-- **Frontend**: Modern HTML/CSS/JS with drag-and-drop
+## 🚀 Run locally
 
-## 🇸🇪 Swedish Electricity Areas
-
-- **SE_1**: Northern Sweden (Luleå) - Typically lowest prices
-- **SE_2**: Central Sweden (Sundsvall)
-- **SE_3**: Central Sweden (Stockholm)
-- **SE_4**: Southern Sweden (Malmö) - Highest price volatility
-
-## 📊 What Analysis is Provided?
-
-### Key Metrics
-
-- **Total Production**: Your solar output (kWh)
-- **Total Revenue**: Income from electricity export
-- **Negative Price Hours**: When export cost money
-- **Timing Loss**: How much below market average you received
-- **Monthly Breakdown**: Visual charts showing patterns
-
-### AI Insights (Optional)
-
-With OpenAI API key configured:
-- Swedish-language explanation of your results
-- Key recommendations
-- Problem areas highlighted
-
-## 🛠️ Development
-
-### CLI Usage
-
-Want command-line access instead of webapp?
+### Web app (the deployed one)
 
 ```bash
-# Analyze with CLI
+cd frontend
+npm install
+npm run dev          # http://localhost:3000
+```
+
+### Python CLI (optional)
+
+```bash
+uv sync
 uv run se-cli analyze your_file.csv --area SE_4 --json
-
-# With AI explanations
-uv run se-cli analyze your_file.csv --area SE_4 --json --ai-explainer
-
-# Inspect file format
-uv run se-cli inspect-production your_file.csv
+# self-consumption valuation:
+uv run se-cli analyze your_file.csv --area SE_4 --vat 25 --energy-tax 0.4282 --transmission-fee 0.25
 ```
 
-### Run Tests
+The CLI fetches prices from ENTSO-E (set `ENTSOE_API_KEY`) or uses the bundled SQLite cache.
+
+## ☁️ Deployment (GitHub Pages)
+
+The web app is a static export deployed by GitHub Actions ([`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml)) on every push to `main`. To deploy your own fork:
+
+1. Enable **Settings → Pages → Source: GitHub Actions**.
+2. Push to `main`. The workflow builds `frontend/` (with `NEXT_PUBLIC_BASE_PATH=/<repo>`) and publishes `frontend/out`.
+
+## 🧪 Tests
 
 ```bash
-uv run pytest
-```
+# Python (interval-aware analysis + fuse parity)
+uv run pytest            # or: python -m pytest test_intervals.py test_core.py
 
-### Code Formatting
-
-```bash
-uv run black .
-uv run isort .
+# TypeScript engine sanity checks
+node --experimental-strip-types frontend/scripts/test-analyze.mjs
 ```
 
 ## 🤝 Contributing
 
-Contributions are welcome! This is an open source project for the solar community.
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📝 Environment Variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `OPENAI_API_KEY` | Optional | Enables AI-powered explanations |
-| `DATABASE_PATH` | Optional | Custom SQLite database path (default: `data/price_data.db`) |
-| `CORS_ORIGINS` | Optional | Allowed frontend origins for CORS (default: `http://localhost:3000`) |
-| `PORT` | Optional | Server port (default: `8080`, Railway sets this automatically) |
-| `NEXT_PUBLIC_API_URL` | Frontend | Backend API URL for Next.js frontend |
-
-**Note**: Electricity price data comes from Sourceful API which requires no API key!
-
-## 🐛 Troubleshooting
-
-### Port 8080 in use?
-```bash
-# Run on different port
-uv run python -c "from app import app; app.run(host='0.0.0.0', port=5000)"
-```
-
-### File upload fails?
-- Check file size (max 16MB)
-- Ensure valid CSV or Excel format
-- Try with sample files in `data/samples/`
-
-### Analysis seems wrong?
-- Verify your electricity area is correct
-- Check that your file has proper date/production columns
-- Use `se-cli inspect-production` to validate file format
-
-## 📚 Resources
-
-- **Sourceful Price API**: https://docs.sourceful.energy/developer/price-api
-- **Nordic Energy Markets**: https://www.nordpoolgroup.com/
-- **Swedish Energy Agency**: https://www.energimyndigheten.se/
+1. Fork and create a feature branch.
+2. Make your change (keep the TS engine and Python analyzer in parity).
+3. Run the tests above.
+4. Open a Pull Request.
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+MIT — see [LICENSE](LICENSE).
 
 ## 🙏 Acknowledgments
 
-- Price data powered by [Sourceful Energy API](https://sourceful.energy)
-- Built for the solar producer community in Sweden
-- Inspired by real challenges facing solar panel owners
-
-## 📮 Support
-
-- 🐛 **Bug reports**: [Open an issue](https://github.com/srcfl/negative-price-calc/issues)
-- 💡 **Feature requests**: [Start a discussion](https://github.com/srcfl/negative-price-calc/discussions)
-- 📖 **Questions**: Check [QUICKSTART.md](QUICKSTART.md) or open an issue
-
----
-
-**Made with ❤️ for the solar energy community** | [GitHub](https://github.com/srcfl/negative-price-calc)
+- Price data via the [Sourceful Price API](https://docs.sourceful.energy/developer/price-api) (ENTSO-E wrapper)
+- Built for the Swedish solar community by [Sourceful Energy](https://sourceful.energy)
+```

@@ -1,36 +1,40 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Negativa Prisanalyseraren — web app
 
-## Getting Started
+The browser-only frontend for the Negative Price Calculator. It parses your solar
+export file, fetches Swedish spot prices, and computes the whole analysis **client-side**
+(no backend). Deployed as a static site to GitHub Pages.
 
-First, run the development server:
+**Live:** https://huggek.github.io/negative-price-calc/
+
+## Develop
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev      # http://localhost:3000
+npm run lint
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Build (static export)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+NEXT_PUBLIC_BASE_PATH=/negative-price-calc npm run build   # outputs ./out
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+`next.config.ts` uses `output: "export"`, so `npm run build` produces a fully static
+site in `out/`. Set `NEXT_PUBLIC_BASE_PATH` to `/<repo>` for a GitHub Pages project site
+(leave empty for a user/organization page or custom domain).
 
-## Learn More
+## Where the logic lives — `src/lib/`
 
-To learn more about Next.js, take a look at the following resources:
+- `parseProduction.ts` — CSV parsing (Swedish formats; hourly / 15-min / daily)
+- `prices.ts` — Sourceful Price API client (no key), EUR/MWh → SEK/kWh
+- `analyze.ts` — interval-aware analysis (overlap allocation), fuse flat-peak, self-consumption valuation
+- `aiSummary.ts` — optional Swedish AI summary via OpenRouter (user-supplied key, in-browser)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Engine sanity tests: `node --experimental-strip-types scripts/test-analyze.mjs`.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Deploy
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Pushing to `main` triggers `.github/workflows/deploy-pages.yml`, which builds this app and
+publishes `out/` to GitHub Pages. UI components come from the Sourceful design system
+(`@sourceful-energy/ui`) — see [CLAUDE.md](CLAUDE.md).

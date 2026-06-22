@@ -2,129 +2,70 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## What this is now
+
+The **deployed product is a browser-only static web app** (Next.js in `frontend/`) hosted on **GitHub Pages**: https://huggek.github.io/negative-price-calc/. All analysis runs **client-side in TypeScript** — there is no backend at runtime. The Python code (`core/`, `cli/`) is kept as a feature-parity library/CLI for offline/scripted use; `app.py` (Flask) is optional and not used by the static site.
+
+When adding analysis features, implement them in the TypeScript engine first (it ships) and mirror them in the Python analyzer with a test. See `MEMORY` notes about keeping TS + Python in parity.
+
 ## Development Commands
 
-### Setup and Dependencies
+### Web app (the deployed one)
 ```bash
-# Install all dependencies
+cd frontend
+npm install
+npm run dev        # http://localhost:3000
+npm run lint
+NEXT_PUBLIC_BASE_PATH=/negative-price-calc npm run build   # static export -> frontend/out
+```
+
+### Python library / CLI
+```bash
 uv sync
-
-# Install with development dependencies  
-uv sync --dev
-```
-
-### Testing
-```bash
-# Run all tests
-uv run pytest
-
-# Run specific test file
-uv run pytest test_core.py
-```
-
-### Code Quality
-```bash
-# Format code
-uv run black .
-uv run isort .
-
-# Run linting
-uv run flake8
-```
-
-### Application Commands
-```bash
-# Modern CLI (preferred)
 uv run se-cli analyze [file] --area [area] --json
+uv run pytest                      # or: python -m pytest test_intervals.py test_core.py
+uv run black . && uv run isort .
+```
 
-# Legacy CLI (being phased out)
-uv run python main.py
-
-# Web application
-uv run python run_webapp.py
-
-# Web application (alternative)
-uv run python app.py
-
-# Docker deployment
-docker-compose up --build
+### TypeScript engine tests
+```bash
+node --experimental-strip-types frontend/scripts/test-analyze.mjs
 ```
 
 ## Architecture Overview
 
-### Core Architecture
-This is an electricity price analysis tool focused on negative price detection and solar production optimization. The system has three main entry points:
+### Frontend (deployed app) — `frontend/src/`
+- `app/page.tsx` — upload UI, settings (fuse, VAT/energy-tax/grid-fee, AI toggle), runs the analysis, renders results
+- `components/` — results cards, price chart, streaming log, file upload
+- `lib/` — the client-side engine:
+  - `parseProduction.ts` — CSV parsing (Swedish formats: semicolon, decimal comma, BOM; hourly/15-min/daily)
+  - `prices.ts` — **Sourceful Price API** client (`mainnet.srcful.dev`, no key, EUR/MWh → SEK/kWh)
+  - `analyze.ts` — **interval-aware** analysis via overlap allocation; fuse flat-peak + self-consumption valuation
+  - `aiSummary.ts` — optional Swedish AI summary via OpenRouter (browser, user-supplied key)
 
-1. **CLI Interface** (`cli/main.py`) - Modern command-line interface with `se-cli` command
-2. **Web Interface** (`app.py`) - Flask-based web application with drag-and-drop file upload
-3. **Legacy CLI** (`main.py`) - Original CLI being phased out
+### Python library / CLI — `core/`, `cli/`
+- `core/price_analyzer.py` — interval-aware analysis (aligns prices onto a finer grid; duration-based "hours"; fuse flat-peak)
+- `core/intervals.py` — granularity helpers
+- `core/price_fetcher.py` — ENTSO-E fetch (needs `ENTSOE_API_KEY`) + SQLite cache (`core/db_manager.py`)
+- `cli/main.py` — `se-cli` (supports `--vat`, `--energy-tax`, `--transmission-fee`)
 
-### Key Components
+### Key concepts
+- **Interval-aware**: never assume "one row = one hour". Production and prices may be hourly, 15-minute (Swedish market from 2025-10-01), or daily; energy/cost and "hours" metrics are computed from each interval's real duration.
+- **Price source**: the browser app uses Sourceful's Price API (a no-key ENTSO-E wrapper). The Python `price_fetcher` uses ENTSO-E directly (key required) plus the bundled SQLite cache.
+- **Area codes**: `SE1`/`SE_1`/`SE-1` all normalize to the same zone (SE1–SE4).
 
-**Data Layer:**
-- `core/price_fetcher.py` - Sourceful API integration with SQLite caching (no API key required)
-- `core/production_loader.py` - CSV/Excel production data loader with AI-assisted parsing
-- `core/db_manager.py` - SQLite database management for price data caching
+## Deployment
 
-**Analysis Engine:**
-- `core/price_analyzer.py` - Core price analysis algorithms
-- `core/negative_price_analysis.py` - Specialized negative price detection
-- `core/price_production_analyzer.py` - Combined price and production analysis
+GitHub Actions (`.github/workflows/deploy-pages.yml`) builds `frontend/` as a static export and publishes to GitHub Pages on every push to `main` (set `NEXT_PUBLIC_BASE_PATH=/<repo>`). Enable **Settings → Pages → Source: GitHub Actions** once.
 
-**AI Components:**
-- `utils/ai_explainer.py` - OpenAI-powered Swedish explanations of analysis results
-- `utils/ai_table_reader.py` - LLM-driven CSV format detection and parsing
-- `utils/csv_format_detector_fallback.py` - Traditional CSV parsing fallback
+## Environment Configuration
 
-### Data Flow Pattern
+- Browser app: no environment needed for prices (Sourceful, no key). AI summary uses a user-supplied OpenRouter key entered in the UI (stored only in the browser).
+- Python CLI: `ENTSOE_API_KEY` (price fetch), `DATABASE_PATH` (optional, default `data/price_data.db`).
 
-1. **Input**: CSV/Excel files containing solar production data (hourly or daily)
-2. **Price Data**: Automatic fetching from ENTSO-E API based on date range and area
-3. **Analysis**: Combined analysis of production patterns and electricity prices
-4. **Output**: Structured JSON with storytelling format, AI explanations, and export options
+## Testing Strategy
 
-### Key Features
-
-- **Multi-granularity Support**: Handles both hourly and daily production data
-- **Intelligent CSV Parsing**: AI-assisted format detection for various CSV schemas
-- **Negative Price Analysis**: Specialized algorithms for negative electricity price scenarios
-- **Battery Simulation**: Energy storage optimization calculations
-- **Multi-currency Support**: EUR, SEK, USD, NOK with configurable exchange rates
-- **Area Code Mapping**: Swedish electricity areas (SE_1 through SE_4) with Nordic support
-
-### Environment Configuration
-
-Required environment variables in `.env`:
-- `OPENAI_API_KEY` - Required for AI features
-- `DATABASE_PATH` - Optional, defaults to `data/price_data.db`
-
-Note: Price data is fetched from Sourceful API which requires no API key.
-
-### File Processing Patterns
-
-The system expects production data in these formats:
-- **Hourly data**: Timestamp + production_kwh columns
-- **Daily data**: Date + production_kwh columns (automatically approximated to hourly)
-- **Flexible schemas**: AI parser handles various column names and formats
-
-### Output Schema
-
-The CLI generates structured JSON with these main sections:
-- `hero` - Key metrics and counterfactuals
-- `aggregates` - Monthly/yearly summaries  
-- `diagnostics` - Data quality metrics
-- `scenarios` - Battery optimization results
-- `distributions` - Statistical distributions
-- `meta` - Analysis metadata
-
-### API Integration Notes
-
-- **Sourceful API**: Day-ahead electricity prices for 39 European areas, cached in SQLite to minimize API calls
-- **OpenAI API**: Uses direct HTTP requests, configurable model
-- **Area codes**: Normalized from various formats (SE1, SE_1, SE-1 all map to SE1)
-
-### Testing Strategy
-
-- Unit tests in `test_core.py` for core functionality
-- Simple OpenAI integration test in `test_openai_simple.py`
-- Test data samples in `data/samples/` directory
+- `test_intervals.py` — interval-aware analysis + fuse parity (pytest)
+- `test_core.py` — core import/analyzer smoke tests
+- `frontend/scripts/test-analyze.mjs` — TypeScript engine sanity checks
+- Sample production files in `data/samples/`

@@ -1,5 +1,9 @@
 # Refined Messaging for Negative Price Calculator
 
+> **Note:** Historical messaging/design notes. The app is now a browser-only tool on
+> GitHub Pages (https://huggek.github.io/negative-price-calc/); the live UI copy is in
+> `frontend/src/`.
+
 ## Overview
 The messaging has been refined to be more professional, educational, and technically accurate while maintaining emotional impact. The focus shifts from "corky" sales language to authoritative market analysis.
 

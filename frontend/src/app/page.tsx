@@ -11,12 +11,12 @@ import {
   Button,
   Input,
   Switch,
+  Checkbox,
 } from "@sourceful-energy/ui";
 import { toast } from "sonner";
-import { X, Sparkles } from "lucide-react";
+import { X, Sparkles, Loader2 } from "lucide-react";
 import { Header } from "@/components/header";
 import { FileUpload } from "@/components/file-upload";
-import { EmailCapture } from "@/components/email-capture";
 import { StreamingTerminal, LogEntry } from "@/components/streaming-terminal";
 import { AnalysisResults } from "@/components/analysis-results";
 import { parseProductionCsv } from "@/lib/parseProduction";
@@ -34,6 +34,7 @@ const AREA_CODES = {
 
 const FUSE_SIZES = ["16", "20", "25", "35", "50", "63"];
 const AI_KEY_STORAGE = "openrouter_key";
+const FORMSPARK_FORM_ID = "ExsKPPKKy";
 
 const GRANULARITY_LABEL: Record<string, string> = {
   "15min": "15-minutersdata",
@@ -50,6 +51,24 @@ function numOrUndef(s: string): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+/** Best-effort newsletter opt-in (Formspark). Fire-and-forget so analysis isn't blocked. */
+async function submitSubscription(email: string): Promise<void> {
+  await fetch(`https://submit-form.com/${FORMSPARK_FORM_ID}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({
+      email,
+      acceptMarketing: true,
+      source: "Negativa Prisanalyseraren",
+      timestamp: new Date().toISOString(),
+    }),
+  });
+}
+
 export default function Home() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedArea, setSelectedArea] = useState("SE_4");
@@ -59,6 +78,8 @@ export default function Home() {
   const [gridFee, setGridFee] = useState("");
   const [aiInsights, setAiInsights] = useState(true);
   const [aiKey, setAiKey] = useState("");
+  const [subscribe, setSubscribe] = useState(false);
+  const [email, setEmail] = useState("");
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -136,7 +157,7 @@ export default function Home() {
 
       if (priceData.intervals.length === 0) {
         throw new Error(
-          "Inga spotpriser hittades för perioden. elprisetjustnu.se har data från ca okt 2022 och framåt."
+          "Inga spotpriser hittades för perioden. Historiska priser finns från ca oktober 2022 och framåt."
         );
       }
       addLog(
@@ -201,6 +222,25 @@ export default function Home() {
       setIsAnalyzing(false);
     }
   }, [selectedFile, selectedArea, fuseAmps, vatRate, energyTax, gridFee, aiInsights, aiKey, addLog]);
+
+  // Run analysis immediately (report shown in-browser). Subscription is optional and,
+  // when opted in, submitted best-effort without blocking the analysis.
+  const handleRun = useCallback(() => {
+    if (!selectedFile) {
+      toast.error("Välj en fil först");
+      return;
+    }
+    if (subscribe && email.trim()) {
+      if (!isValidEmail(email)) {
+        toast.error("Ange en giltig e-postadress eller avmarkera prenumerationen");
+        return;
+      }
+      submitSubscription(email.trim())
+        .then(() => toast.success("Tack för att du prenumererar på Sourceful Energy!"))
+        .catch(() => toast.error("Kunde inte registrera prenumerationen (analysen körs ändå)."));
+    }
+    handleAnalyze();
+  }, [selectedFile, subscribe, email, handleAnalyze]);
 
   const handleReset = useCallback(() => {
     if (abortControllerRef.current) abortControllerRef.current.abort();
@@ -347,7 +387,7 @@ export default function Home() {
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Anges för att värdera självkonsumtion: värde = (spotpris + energiskatt + nätavgift) × (1 + moms). Lämna tomt för att hoppa över.
+                  Anges för att värdera självkonsumtion: värde = (spotpris + energiskatt + nätavgift) × (1, moms). Lämna tomt för att hoppa över.
                 </p>
               </div>
 
@@ -389,8 +429,46 @@ export default function Home() {
                 )}
               </div>
 
-              {selectedFile && (
-                <EmailCapture onEmailSubmitted={handleAnalyze} isAnalyzing={isAnalyzing} aiEnabled={aiInsights} />
+              {/* Optional newsletter opt-in (does not gate the analysis) */}
+              <div className="rounded-lg border border-border/50 bg-muted/30 p-4 space-y-3">
+                <div className="flex items-start gap-2">
+                  <Checkbox
+                    id="subscribe"
+                    checked={subscribe}
+                    onCheckedChange={(c) => setSubscribe(c === true)}
+                    disabled={isAnalyzing}
+                  />
+                  <label htmlFor="subscribe" className="text-sm text-muted-foreground leading-tight cursor-pointer">
+                    Prenumerera på nyheter från Sourceful Energy (valfritt)
+                  </label>
+                </div>
+                {subscribe && (
+                  <div className="space-y-2">
+                    <Label htmlFor="email">E-postadress</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="din@email.se"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      disabled={isAnalyzing}
+                    />
+                  </div>
+                )}
+              </div>
+
+              <Button className="w-full" size="lg" onClick={handleRun} disabled={!selectedFile || isAnalyzing}>
+                {isAnalyzing ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Analyserar...
+                  </>
+                ) : (
+                  "Analysera"
+                )}
+              </Button>
+              {!selectedFile && (
+                <p className="text-center text-sm text-muted-foreground">Välj en fil ovan för att börja.</p>
               )}
             </div>
 
@@ -417,7 +495,7 @@ export default function Home() {
                   <strong className="text-foreground">Krav på data:</strong> En kolumn med datum/tid och en kolumn med exporterad energi i kWh. Bäst resultat med tim- eller 15-minutersdata. (Excel: exportera som CSV.)
                 </p>
                 <p className="text-xs italic">
-                  Priser från elprisetjustnu.se. Verktyget gör sitt bästa för att tolka olika filformat, men vi tar inget ansvar för analysens exakthet.
+                  Verktyget gör sitt bästa för att tolka olika filformat, men vi tar inget ansvar för analysens exakthet.
                 </p>
               </div>
             </div>
@@ -434,11 +512,6 @@ export default function Home() {
             Powered by{" "}
             <a href="https://sourceful.energy" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
               Sourceful Energy
-            </a>
-            {" • "}
-            Priser från{" "}
-            <a href="https://www.elprisetjustnu.se" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
-              elprisetjustnu.se
             </a>
           </p>
         </div>

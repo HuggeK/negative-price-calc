@@ -1,120 +1,51 @@
 # Quick Start Guide
 
-Get the Negative Price Calculator webapp running in 3 easy steps!
+## Just use it — no install
 
-## Prerequisites
+The app runs entirely in your browser. Open it on GitHub Pages:
 
-- Python 3.12 or higher
-- [uv](https://docs.astral.sh/uv/) package manager
+**👉 https://huggek.github.io/negative-price-calc/**
 
-## Installation
+1. Upload your solar export file (CSV — hourly, 15-minute or daily).
+2. Pick your bidding zone (SE1–SE4).
+3. (Optional) set your main fuse size and VAT / energy-tax / grid-fee, and toggle the AI summary.
+4. Click **Analysera** — the report appears right in the browser. Download it as JSON or CSV.
 
-### 1. Clone the repository
+Nothing is uploaded to a server: parsing, price-matching and analysis all happen on your device. Prices come from the free [Sourceful Price API](https://docs.sourceful.energy/developer/price-api) (no key required).
+
+No file of your own? Try one from [`data/samples/`](data/samples/).
+
+## Optional: AI summary
+
+Toggle **AI-sammanfattning** and paste your own [OpenRouter](https://openrouter.ai) API key. It is stored only in your browser and used to generate a short Swedish summary client-side.
+
+## Run the web app locally (optional)
 
 ```bash
-git clone https://github.com/srcfl/negative-price-calc.git
-cd negative-price-calc
+cd frontend
+npm install
+npm run dev          # http://localhost:3000
 ```
 
-### 2. Install dependencies
+## Use the Python CLI (optional)
 
 ```bash
 uv sync
+uv run se-cli analyze your_file.csv --area SE_4 --json
 ```
 
-### 3. Start the webapp
+The CLI fetches prices from ENTSO-E (set `ENTSOE_API_KEY`) or uses the bundled price cache.
 
-```bash
-uv run python app.py
-```
+## Electricity areas
 
-That's it! Open your browser and navigate to:
+- **SE1**: Northern Sweden (Luleå)
+- **SE2**: Central Sweden (Sundsvall)
+- **SE3**: Central Sweden (Stockholm)
+- **SE4**: Southern Sweden (Malmö)
 
-```
-http://localhost:8080
-```
+## Need help?
 
-## Using the Webapp
-
-1. **Upload your production data**: Drag and drop or click to select your CSV or Excel file containing solar production data
-2. **Select your electricity area**: Choose your Swedish electricity area (SE_1 to SE_4)
-3. **Click "Analysera"**: The tool will analyze your data and show results
-
-## Features
-
-- ✅ **No API keys required** for basic analysis
-- ✅ **Automatic price data fetching** from Sourceful API
-- ✅ **Negative price detection** and cost analysis
-- ✅ **Visual charts** and metrics
-- ✅ **Excel export** for detailed analysis
-
-## Optional: Enable AI Explanations
-
-Want AI-powered Swedish explanations of your analysis? Just add an OpenAI API key:
-
-1. Copy the environment template:
-   ```bash
-   cp .env.example .env
-   ```
-
-2. Edit `.env` and add your OpenAI API key:
-   ```
-   OPENAI_API_KEY=your_key_here
-   ```
-
-3. Restart the webapp
-
-That's it! The AI explanations will automatically appear in your analysis results.
-
-## Supported File Formats
-
-### CSV Format
-Your CSV should have columns for:
-- Date/timestamp
-- Production (kWh)
-
-The tool is smart and can handle various column names and formats!
-
-### Excel Format
-Both `.xlsx` and `.xls` files are supported.
-
-## Electricity Areas
-
-- **SE_1**: Northern Sweden (Luleå)
-- **SE_2**: Central Sweden (Sundsvall)
-- **SE_3**: Central Sweden (Stockholm)
-- **SE_4**: Southern Sweden (Malmö)
-
-## Troubleshooting
-
-**Port 8080 already in use?**
-```bash
-# Use a different port
-uv run python -c "from app import app; app.run(host='0.0.0.0', port=5000)"
-```
-
-**File upload fails?**
-- Make sure your file is under 16MB
-- Check that it's a valid CSV or Excel file
-
-**Analysis takes too long?**
-- Large files may take a few minutes to process
-- The tool supports files with up to several years of data
-
-## Need Help?
-
-Check out the full [README.md](README.md) for more detailed information, or open an issue on GitHub.
-
-## Example Data
-
-Want to try it out? Sample files are included in `data/samples/` directory.
-
-## What's Next?
-
-- View your negative price analysis
-- Export results to Excel
-- Understand your timing losses
-- See AI-powered insights (if OpenAI key is configured)
+See the full [README.md](README.md) or open an issue on GitHub.
 
 ---
 

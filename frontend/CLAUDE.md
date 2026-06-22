@@ -1,4 +1,8 @@
-# [Project Name]
+# Negativa Prisanalyseraren (frontend)
+
+Browser-only Next.js app (static export → GitHub Pages) that runs the entire
+electricity price/production analysis client-side. Live at
+https://huggek.github.io/negative-price-calc/.
 
 ## UI Framework
 
@@ -62,5 +66,11 @@ toast.error("Failed")
 
 ## Project-Specific Notes
 
-<!-- Add your project-specific context below -->
+- **No backend.** The app is a static export (`next.config.ts` → `output: "export"`); all
+  analysis runs in the browser (`src/lib/`). Don't add API routes or server components — they
+  can't be statically exported. Prices come from the Sourceful Price API directly from the client.
+- **Deploy:** push to `main` → `.github/workflows/deploy-pages.yml` builds with
+  `NEXT_PUBLIC_BASE_PATH=/<repo>` and publishes to GitHub Pages.
+- **Interval-aware:** never assume one row equals one hour — data can be hourly, 15-minute, or daily.
+- Keep the analysis logic in parity with the Python `core/price_analyzer.py`.
 
