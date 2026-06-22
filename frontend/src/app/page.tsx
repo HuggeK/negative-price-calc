@@ -435,7 +435,7 @@ export default function Home() {
                     </div>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Fasta abonnemangsavgifter. Elnätets avgift beror oftast på din säkringsstorlek ovan. Dras av i månadssammanställningen nedan.
+                    Fasta abonnemangsavgifter. Elnätets avgift beror oftast på din säkringsstorlek ovan. Dras av från de uppskattade månadsintäkterna nedan.
                   </p>
                 </div>
 
@@ -648,6 +648,12 @@ export default function Home() {
             Prisdata från{" "}
             <a href="https://www.elprisetjustnu.se" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
               elprisetjustnu.se
+            </a>
+          </p>
+          <p className="mt-1">
+            Öppen källkod på{" "}
+            <a href="https://github.com/srcfl/negative-price-calc" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
+              GitHub
             </a>
           </p>
         </div>
