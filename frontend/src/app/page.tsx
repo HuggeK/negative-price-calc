@@ -129,7 +129,10 @@ export default function Home() {
   const [hasError, setHasError] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [aiSummary, setAiSummary] = useState<string | null>(null);
+  // Metadata shown with the result (works for both a fresh analysis and a loaded JSON).
+  const [displayMeta, setDisplayMeta] = useState<{ filename: string; area: string } | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const jsonInputRef = useRef<HTMLInputElement>(null);
 
   // Restore the (device-local) OpenRouter key.
   useEffect(() => {
@@ -316,7 +319,23 @@ export default function Home() {
           `Nätanslutning: ${analysis.natanslutning.timmar_vid_max} h vid max (säkring ${fuseAmps}A ≈ ${analysis.natanslutning.sakring_kw} kW).`
         );
       }
+      // Echo the settings used (display units) into the result for export + display.
+      analysis.parametrar = {
+        elomrade: selectedArea,
+        huvudsakring_a: fuseAmps || undefined,
+        moms_pct: vatRate || undefined,
+        elnat_fast_ore_per_kwh: gridFixedOre || undefined,
+        elnat_rorlig_pct: gridPct || undefined,
+        elhandel_fast_ore_per_kwh: traderFixedOre || undefined,
+        elhandel_rorlig_pct: traderPct || undefined,
+        elnat_manadsavgift_kr: gridMonthlyFee || undefined,
+        elhandel_manadsavgift_kr: traderMonthlyFee || undefined,
+        energiskatt_ore_per_kwh: energyTaxOre || undefined,
+        natavgift_ore_per_kwh: gridFeeOre || undefined,
+        kvartspris_elhandel: traderQuarterPrice,
+      };
       setResult(analysis);
+      setDisplayMeta({ filename: file.name, area: selectedArea });
       addLog("success", "Analys klar!");
 
       // Optional in-browser AI summary (uses the user's own OpenRouter key).
@@ -394,9 +413,31 @@ export default function Home() {
     setIsAnalyzing(false);
     setResult(null);
     setAiSummary(null);
+    setDisplayMeta(null);
     setLogs([]);
     setHasError(false);
   }, []);
+
+  // Load a previously downloaded result JSON and re-display it (no recompute).
+  const handleLoadJson = useCallback(async (file: File) => {
+    try {
+      const data = JSON.parse(await file.text());
+      if (!data || !data.hero || !data.input) {
+        throw new Error("Filen ser inte ut som ett sparat analysresultat.");
+      }
+      setAiSummary(data.ai_explanation_sv ?? null);
+      setResult(data as AnalysisResult);
+      setDisplayMeta({
+        filename: data._metadata?.filename || file.name,
+        area: data._metadata?.area || data.parametrar?.elomrade || selectedArea,
+      });
+      setShowTerminal(false);
+      setHasError(false);
+      toast.success("Resultat inläst.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Kunde inte läsa JSON-filen.");
+    }
+  }, [selectedArea]);
 
   // Clear the remembered settings and reset every field to its default.
   const handleClearSaved = useCallback(() => {
@@ -423,20 +464,50 @@ export default function Home() {
 
   const handleDownloadJson = useCallback(() => {
     if (!result) return;
-    const payload = aiSummary ? { ...result, ai_explanation_sv: aiSummary } : result;
+    const payload = {
+      ...result,
+      ...(aiSummary ? { ai_explanation_sv: aiSummary } : {}),
+      _metadata: {
+        filename: displayMeta?.filename ?? selectedFile?.name ?? "",
+        area: displayMeta?.area ?? selectedArea,
+        currency: "SEK",
+        granularity: result.input.granularity,
+        generated_at: new Date().toISOString(),
+      },
+    };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-    triggerDownload(blob, `prisanalys_${selectedArea}.json`);
-  }, [result, aiSummary, selectedArea]);
+    triggerDownload(blob, `prisanalys_${displayMeta?.area ?? selectedArea}.json`);
+  }, [result, aiSummary, selectedArea, selectedFile, displayMeta]);
 
+  // CSV at 15-minute resolution: a header block with the price parameters, then the
+  // per-interval producing series.
   const handleDownloadCsv = useCallback(() => {
     if (!result) return;
-    const header = "period;production_kwh;revenue_sek;avg_price_sek_per_kwh;negative_hours;negative_kwh;negative_value_sek";
-    const lines = result.aggregates.monthly.map((m) =>
-      [m.period, m.production_kwh, m.revenue_sek, m.avg_price_sek_per_kwh, m.negative_hours, m.negative_kwh, m.negative_value_sek].join(";")
+    const p = result.parametrar ?? {};
+    const area = displayMeta?.area ?? selectedArea;
+    const paramRows = [
+      "# Prisparametrar (inställningar)",
+      `# Elområde;${p.elomrade ?? area}`,
+      `# Huvudsäkring (A);${p.huvudsakring_a ?? ""}`,
+      `# Moms (%);${p.moms_pct ?? ""}`,
+      `# Elnät fast (öre/kWh);${p.elnat_fast_ore_per_kwh ?? ""}`,
+      `# Elnät rörlig (% av spot);${p.elnat_rorlig_pct ?? ""}`,
+      `# Elhandel fast (öre/kWh);${p.elhandel_fast_ore_per_kwh ?? ""}`,
+      `# Elhandel rörlig (% av spot);${p.elhandel_rorlig_pct ?? ""}`,
+      `# Elnät månadsavgift (kr);${p.elnat_manadsavgift_kr ?? ""}`,
+      `# Elhandel månadsavgift (kr);${p.elhandel_manadsavgift_kr ?? ""}`,
+      `# Energiskatt (öre/kWh);${p.energiskatt_ore_per_kwh ?? ""}`,
+      `# Nätavgift (öre/kWh);${p.natavgift_ore_per_kwh ?? ""}`,
+      `# Kvartspris elhandel;${p.kvartspris_elhandel ? "ja" : "nej"}`,
+      "#",
+    ];
+    const header = "tid;produktion_kwh;spotpris_sek_per_kwh;effektivt_pris_sek_per_kwh;varde_sek";
+    const lines = (result.series ?? []).map((s) =>
+      [s.start, s.production_kwh, s.spot_sek_per_kwh, s.effektivt_pris_sek_per_kwh, s.varde_sek].join(";")
     );
-    const blob = new Blob([[header, ...lines].join("\n")], { type: "text/csv;charset=utf-8" });
-    triggerDownload(blob, `prisanalys_${selectedArea}.csv`);
-  }, [result, selectedArea]);
+    const blob = new Blob([[...paramRows, header, ...lines].join("\n")], { type: "text/csv;charset=utf-8" });
+    triggerDownload(blob, `prisanalys_15min_${area}.csv`);
+  }, [result, selectedArea, displayMeta]);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -454,8 +525,8 @@ export default function Home() {
             <AnalysisResults
               data={aiSummary ? { ...result, ai_explanation_sv: aiSummary } : result}
               metadata={{
-                filename: selectedFile?.name ?? "",
-                area: selectedArea,
+                filename: displayMeta?.filename ?? selectedFile?.name ?? "",
+                area: displayMeta?.area ?? selectedArea,
                 currency: "SEK",
                 granularity: result.input.granularity,
               }}
@@ -757,6 +828,29 @@ export default function Home() {
                   Välj en fil ovan, eller klicka på <span className="text-foreground">Prova med exempeldata</span> för att testa direkt.
                 </p>
               )}
+
+              <div className="pt-2 text-center">
+                <input
+                  ref={jsonInputRef}
+                  type="file"
+                  accept="application/json,.json"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleLoadJson(f);
+                    e.target.value = "";
+                  }}
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground hover:text-foreground"
+                  onClick={() => jsonInputRef.current?.click()}
+                  disabled={isAnalyzing || isLoadingExample}
+                >
+                  Ladda in sparat resultat (JSON)
+                </Button>
+              </div>
             </div>
 
             <div className="rounded-lg border border-border/50 bg-muted/30 p-6 space-y-4">

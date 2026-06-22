@@ -63,6 +63,29 @@ export interface AnalysisResult {
     date_range: { start: string; end: string };
     granularity: Granularity;
   };
+  /** Per-interval (15-minute) producing series, for CSV/JSON export. */
+  series: Array<{
+    start: string;
+    production_kwh: number;
+    spot_sek_per_kwh: number;
+    effektivt_pris_sek_per_kwh: number;
+    varde_sek: number;
+  }>;
+  /** Echo of the settings used (display units), attached by the UI for export/display. */
+  parametrar?: {
+    elomrade?: string;
+    huvudsakring_a?: string;
+    moms_pct?: string;
+    elnat_fast_ore_per_kwh?: string;
+    elnat_rorlig_pct?: string;
+    elhandel_fast_ore_per_kwh?: string;
+    elhandel_rorlig_pct?: string;
+    elnat_manadsavgift_kr?: string;
+    elhandel_manadsavgift_kr?: string;
+    energiskatt_ore_per_kwh?: string;
+    natavgift_ore_per_kwh?: string;
+    kvartspris_elhandel?: boolean;
+  };
   aggregates: {
     monthly: Array<{
       period: string;

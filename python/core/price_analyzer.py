@@ -473,6 +473,22 @@ class PriceAnalyzer:
                     'avg_net_sek': round(sum(m['net_sek'] for m in forecast_months) / n, 2),
                 }
 
+        # Echo the inputs used (SEK units), for traceability / export. Mirrors the web
+        # app's `parametrar` block.
+        analysis['parameters'] = {
+            'vat_rate': vat_rate,
+            'grid_fixed_sek_per_kwh': grid_fixed,
+            'grid_pct': grid_pct,
+            'trader_fixed_sek_per_kwh': trader_fixed,
+            'trader_pct': trader_pct,
+            'grid_monthly_fee_sek': grid_monthly_fee,
+            'trader_monthly_fee_sek': trader_monthly_fee,
+            'self_energy_tax_sek_per_kwh': self_energy_tax,
+            'self_grid_fee_sek_per_kwh': self_grid_fee,
+            'self_quarter_price': self_quarter_price,
+            'fuse_amps': fuse_amps,
+        }
+
         return analysis
     
     @staticmethod

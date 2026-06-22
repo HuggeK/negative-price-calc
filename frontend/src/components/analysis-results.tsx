@@ -28,6 +28,7 @@ import {
   TrendingDown as TrendingDownIcon,
   CalendarDays,
   Info,
+  SlidersHorizontal,
 } from "lucide-react";
 import { PriceChart } from "./price-chart";
 import { LossChart } from "./loss-chart";
@@ -188,6 +189,20 @@ interface AnalysisData {
     price_intervals?: number;
     production_intervals?: number;
     matched_kwh_pct?: number;
+  };
+  parametrar?: {
+    elomrade?: string;
+    huvudsakring_a?: string;
+    moms_pct?: string;
+    elnat_fast_ore_per_kwh?: string;
+    elnat_rorlig_pct?: string;
+    elhandel_fast_ore_per_kwh?: string;
+    elhandel_rorlig_pct?: string;
+    elnat_manadsavgift_kr?: string;
+    elhandel_manadsavgift_kr?: string;
+    energiskatt_ore_per_kwh?: string;
+    natavgift_ore_per_kwh?: string;
+    kvartspris_elhandel?: boolean;
   };
 }
 
@@ -838,6 +853,48 @@ export function AnalysisResults({
       {/* Daily overview chart */}
       {data.aggregates?.daily && data.aggregates.daily.length > 1 && (
         <PriceChart dailyData={data.aggregates.daily} />
+      )}
+
+      {/* Price parameters used for this analysis */}
+      {data.parametrar && (
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center gap-2">
+              <SlidersHorizontal className="h-5 w-5 text-primary" />
+              <CardTitle className="text-lg">Prisparametrar</CardTitle>
+            </div>
+            <CardDescription>Inställningarna som användes för den här analysen</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-3">
+              {(() => {
+                const pp = data.parametrar;
+                const rows: Array<[string, string]> = [];
+                const push = (label: string, v?: string) => {
+                  if (v) rows.push([label, v]);
+                };
+                push("Elområde", pp.elomrade);
+                push("Huvudsäkring", pp.huvudsakring_a ? `${pp.huvudsakring_a} A` : undefined);
+                push("Moms", pp.moms_pct ? `${pp.moms_pct} %` : undefined);
+                push("Elnät fast", pp.elnat_fast_ore_per_kwh ? `${pp.elnat_fast_ore_per_kwh} öre/kWh` : undefined);
+                push("Elnät rörlig", pp.elnat_rorlig_pct ? `${pp.elnat_rorlig_pct} % av spot` : undefined);
+                push("Elhandel fast", pp.elhandel_fast_ore_per_kwh ? `${pp.elhandel_fast_ore_per_kwh} öre/kWh` : undefined);
+                push("Elhandel rörlig", pp.elhandel_rorlig_pct ? `${pp.elhandel_rorlig_pct} % av spot` : undefined);
+                push("Elnät månadsavgift", pp.elnat_manadsavgift_kr ? `${pp.elnat_manadsavgift_kr} kr/mån` : undefined);
+                push("Elhandel månadsavgift", pp.elhandel_manadsavgift_kr ? `${pp.elhandel_manadsavgift_kr} kr/mån` : undefined);
+                push("Energiskatt", pp.energiskatt_ore_per_kwh ? `${pp.energiskatt_ore_per_kwh} öre/kWh` : undefined);
+                push("Nätavgift", pp.natavgift_ore_per_kwh ? `${pp.natavgift_ore_per_kwh} öre/kWh` : undefined);
+                push("Kvartspris elhandel", pp.kvartspris_elhandel ? "Ja" : "Nej");
+                return rows.map(([label, value]) => (
+                  <div key={label} className="flex flex-col">
+                    <dt className="text-muted-foreground">{label}</dt>
+                    <dd className="font-medium text-foreground font-mono">{value}</dd>
+                  </div>
+                ));
+              })()}
+            </dl>
+          </CardContent>
+        </Card>
       )}
 
       {/* AI Explanation */}

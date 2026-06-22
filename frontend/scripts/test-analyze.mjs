@@ -67,6 +67,10 @@ console.log("Test 2: hourly production x 15-min prices");
   approx(r.hero.export_förluster.kostnad_negativ_export_sek, 2, "negative cost SEK");
   approx(r.hero.tidsanalys.totala_timmar, 1, "total hours");
   approx(r.hero.tidsanalys.negativa_timmar_under_produktion, 0.25, "negative producing hours = 15 min");
+  // 15-min producing series: the hour splits into 4 quarters.
+  eq(r.series.length, 4, "series: 4 quarters");
+  approx(r.series[2].spot_sek_per_kwh, -2, "series: quarter 3 spot price");
+  approx(r.series[2].production_kwh, 1, "series: quarter 3 production");
 }
 
 // --- Test 3: daily production x hourly prices (coarse production, fine prices) ---

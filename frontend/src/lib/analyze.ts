@@ -311,6 +311,15 @@ export function analyze(
   let lossSek = 0;
   const lossByDay = new Map<string, number>();
 
+  // 15-minute (interval-level) producing series for the CSV/JSON export.
+  interface SeriesPoint {
+    start: number;
+    kwh: number;
+    spot: number;
+    eff: number;
+  }
+  const series: SeriesPoint[] = [];
+
   // Sweep: lo is the first price interval that could overlap the current production row.
   let lo = 0;
   for (const p of sortedProd) {
@@ -359,9 +368,10 @@ export function analyze(
         if (energy > 0) d.negative_hours += hours;
       }
 
-      // Quarters exported at a loss: effective price below zero while exporting.
+      // Per-interval (15-min) producing series + quarters exported at a loss.
       if (energy > 0) {
         const eff = effPrice(q.sekPerKwh);
+        series.push({ start: Math.max(p.start, q.start), kwh: energy, spot: q.sekPerKwh, eff });
         if (eff < 0) {
           const segStart = Math.max(p.start, q.start);
           const lossAbs = -(energy * eff); // positive money paid
@@ -547,6 +557,13 @@ export function analyze(
       granularity: opts.productionGranularity ?? "unknown",
     },
     aggregates: { monthly, daily },
+    series: series.map((s) => ({
+      start: new Date(s.start).toISOString(),
+      production_kwh: round(s.kwh, 4),
+      spot_sek_per_kwh: round(s.spot, 4),
+      effektivt_pris_sek_per_kwh: round(s.eff, 4),
+      varde_sek: round(s.kwh * s.eff, 4),
+    })),
     manads_prognos,
     exportersattning,
     sjalvkonsumtion,
