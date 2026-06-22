@@ -53,6 +53,10 @@ export interface AnalyzeOptions {
   selfEnergyTax?: number;
   /** Self-consumption: grid/transmission fee in SEK/kWh (avoided when self-consuming). */
   selfGridFee?: number;
+  /** Elnätsbolag fixed monthly fee in SEK/month (grid subscription; varies by fuse class). */
+  gridMonthlyFee?: number;
+  /** Elhandelsbolag fixed monthly fee in SEK/month. */
+  traderMonthlyFee?: number;
 }
 
 /** Normalize a VAT input: 25 -> 0.25, 0.25 -> 0.25. */
@@ -218,23 +222,36 @@ export function analyze(
   let negValueSek = 0;
   let negProducingHours = 0; // hours where price < 0 AND exporting
 
+  const zeroAcc = (): MonthAcc => ({
+    production_kwh: 0,
+    revenue_sek: 0,
+    priceTimesHours: 0,
+    hours: 0,
+    negative_hours: 0,
+    negative_kwh: 0,
+    negative_value_sek: 0,
+  });
+
   const months = new Map<string, MonthAcc>();
   const getMonth = (ms: number): MonthAcc => {
     const k = monthKey(ms);
     let m = months.get(k);
     if (!m) {
-      m = {
-        production_kwh: 0,
-        revenue_sek: 0,
-        priceTimesHours: 0,
-        hours: 0,
-        negative_hours: 0,
-        negative_kwh: 0,
-        negative_value_sek: 0,
-      };
+      m = zeroAcc();
       months.set(k, m);
     }
     return m;
+  };
+
+  const days = new Map<string, MonthAcc>();
+  const getDay = (ms: number): MonthAcc => {
+    const k = dateStr(ms);
+    let d = days.get(k);
+    if (!d) {
+      d = zeroAcc();
+      days.set(k, d);
+    }
+    return d;
   };
 
   // Effective export price per kWh for a given spot, using the configured offsets
@@ -283,10 +300,15 @@ export function analyze(
       if (energy > 0) producingHours += hours;
 
       const m = getMonth(p.start);
+      const d = getDay(p.start);
       m.production_kwh += energy;
       m.revenue_sek += value;
       m.priceTimesHours += q.sekPerKwh * hours;
       m.hours += hours;
+      d.production_kwh += energy;
+      d.revenue_sek += value;
+      d.priceTimesHours += q.sekPerKwh * hours;
+      d.hours += hours;
 
       if (q.sekPerKwh < 0) {
         negKwh += energy;
@@ -295,6 +317,9 @@ export function analyze(
         m.negative_kwh += energy;
         m.negative_value_sek += value;
         if (energy > 0) m.negative_hours += hours;
+        d.negative_kwh += energy;
+        d.negative_value_sek += value;
+        if (energy > 0) d.negative_hours += hours;
       }
 
       // Quarters exported at a loss: effective price below zero while exporting.
@@ -339,6 +364,54 @@ export function analyze(
       negative_kwh: round(m.negative_kwh, 3),
       negative_value_sek: round(m.negative_value_sek, 2),
     }));
+
+  const daily = [...days.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, d]) => ({
+      date,
+      production_kwh: round(d.production_kwh, 3),
+      revenue_sek: round(d.revenue_sek, 2),
+      negative_kwh: round(d.negative_kwh, 3),
+      negative_value_sek: round(d.negative_value_sek, 2),
+    }));
+
+  // Monthly forecast: for each month with FULL data coverage, project what to expect.
+  // Effective compensation aggregates affinely from the month's spot revenue and energy;
+  // net subtracts the fixed monthly fees (elnät subscription + elhandel monthly fee).
+  const gridMonthlyFee = opts.gridMonthlyFee ?? 0;
+  const traderMonthlyFee = opts.traderMonthlyFee ?? 0;
+  const fixedMonthly = gridMonthlyFee + traderMonthlyFee;
+  const fullMonths = [...months.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([period, mm]) => {
+      const [y, mo] = period.split("-").map(Number);
+      const firstOfMonth = Date.UTC(y, mo - 1, 1);
+      const firstOfNext = Date.UTC(y, mo, 1);
+      const complete = prodStart <= firstOfMonth && prodEnd >= firstOfNext;
+      const effective = (1 + vatFrac) * ((1 + totalPctFrac) * mm.revenue_sek + totalFixed * mm.production_kwh);
+      return { period, complete, production_kwh: mm.production_kwh, effective, net: effective - fixedMonthly };
+    })
+    .filter((m) => m.complete);
+
+  const manads_prognos =
+    fullMonths.length > 0
+      ? {
+          fullstandiga_manader: fullMonths.length,
+          elnat_avgift_sek_per_man: round(gridMonthlyFee, 2),
+          elhandel_avgift_sek_per_man: round(traderMonthlyFee, 2),
+          fasta_avgifter_sek_per_man: round(fixedMonthly, 2),
+          manader: fullMonths.map((m) => ({
+            period: m.period,
+            production_kwh: round(m.production_kwh, 1),
+            effektiv_ersattning_sek: round(m.effective, 2),
+            fasta_avgifter_sek: round(fixedMonthly, 2),
+            netto_sek: round(m.net, 2),
+          })),
+          snitt_production_kwh: round(fullMonths.reduce((s, m) => s + m.production_kwh, 0) / fullMonths.length, 1),
+          snitt_effektiv_ersattning_sek: round(fullMonths.reduce((s, m) => s + m.effective, 0) / fullMonths.length, 2),
+          snitt_netto_sek: round(fullMonths.reduce((s, m) => s + m.net, 0) / fullMonths.length, 2),
+        }
+      : undefined;
 
   const natanslutning =
     opts.fuseAmps && opts.fuseAmps > 0
@@ -417,7 +490,8 @@ export function analyze(
       date_range: { start: dateStr(prodStart), end: dateStr(prodEnd) },
       granularity: opts.productionGranularity ?? "unknown",
     },
-    aggregates: { monthly },
+    aggregates: { monthly, daily },
+    manads_prognos,
     exportersattning,
     sjalvkonsumtion,
     forlust_export,

@@ -91,6 +91,9 @@ export default function Home() {
   // Elhandelsbolag (trader): påslag/avdrag.
   const [traderFixedOre, setTraderFixedOre] = useState("");
   const [traderPct, setTraderPct] = useState("");
+  // Fixed monthly fees (kronor/month, not öre): elnät (per fuse class) + elhandel.
+  const [gridMonthlyFee, setGridMonthlyFee] = useState("");
+  const [traderMonthlyFee, setTraderMonthlyFee] = useState("");
   // Self-consumption valuation (separate, optional). Inputs in öre/kWh.
   const [energyTaxOre, setEnergyTaxOre] = useState("");
   const [gridFeeOre, setGridFeeOre] = useState("");
@@ -199,6 +202,8 @@ export default function Home() {
         gridPct: numOrUndef(gridPct),
         traderFixed: oreToSek(traderFixedOre),
         traderPct: numOrUndef(traderPct),
+        gridMonthlyFee: numOrUndef(gridMonthlyFee),
+        traderMonthlyFee: numOrUndef(traderMonthlyFee),
         selfEnergyTax: oreToSek(energyTaxOre),
         selfGridFee: oreToSek(gridFeeOre),
       });
@@ -249,7 +254,7 @@ export default function Home() {
     } finally {
       setIsAnalyzing(false);
     }
-  }, [selectedFile, selectedArea, fuseAmps, vatRate, gridFixedOre, gridPct, traderFixedOre, traderPct, energyTaxOre, gridFeeOre, aiInsights, aiKey, addLog]);
+  }, [selectedFile, selectedArea, fuseAmps, vatRate, gridFixedOre, gridPct, traderFixedOre, traderPct, gridMonthlyFee, traderMonthlyFee, energyTaxOre, gridFeeOre, aiInsights, aiKey, addLog]);
 
   // Run analysis immediately (report shown in-browser). Subscription is optional and,
   // when opted in, submitted best-effort without blocking the analysis.
@@ -418,6 +423,23 @@ export default function Home() {
                 </div>
 
                 <div className="space-y-2">
+                  <h5 className="text-sm font-medium text-foreground">Fasta månadsavgifter</h5>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="grid-monthly">Elnät (kr/månad)</Label>
+                      <Input id="grid-monthly" inputMode="decimal" value={gridMonthlyFee} onChange={(e) => setGridMonthlyFee(e.target.value)} placeholder="t.ex. 250" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="trader-monthly">Elhandel (kr/månad)</Label>
+                      <Input id="trader-monthly" inputMode="decimal" value={traderMonthlyFee} onChange={(e) => setTraderMonthlyFee(e.target.value)} placeholder="t.ex. 45" />
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Fasta abonnemangsavgifter. Elnätets avgift beror oftast på din säkringsstorlek ovan. Dras av i månadssammanställningen nedan.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
                   <Label htmlFor="vat">Moms (%)</Label>
                   <Input id="vat" inputMode="decimal" value={vatRate} onChange={(e) => setVatRate(e.target.value)} placeholder="25" className="max-w-[8rem]" />
                   <p className="text-xs text-muted-foreground">Används för både ersättningen nedan och värdet av självkonsumtion.</p>
@@ -428,7 +450,7 @@ export default function Home() {
                   <h4 className="text-sm font-medium text-foreground">Ersättning för exporterad el</h4>
 
                   <div className="space-y-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Elnätsbolag (förlustersättning)</p>
+                    <h5 className="text-sm font-medium text-foreground">Elnätsbolag – förlustersättning</h5>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-2">
                         <Label htmlFor="grid-fixed">Fast (öre/kWh)</Label>
@@ -442,7 +464,7 @@ export default function Home() {
                   </div>
 
                   <div className="space-y-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Elhandelsbolag (påslag/avdrag)</p>
+                    <h5 className="text-sm font-medium text-foreground">Elhandelsbolag – påslag/avdrag</h5>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-2">
                         <Label htmlFor="trader-fixed">Fast (öre/kWh)</Label>

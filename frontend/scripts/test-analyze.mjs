@@ -224,5 +224,29 @@ console.log("Test 8: export-at-a-loss quarters");
   eq(f.serie.length, 1, "loss: one day in series");
 }
 
+// --- Test 9: monthly forecast (full months) + daily aggregate ---
+console.log("Test 9: monthly forecast + daily aggregate");
+{
+  const nov1 = Date.UTC(2025, 10, 1, 0, 0, 0);
+  const dec31_23 = Date.UTC(2025, 11, 31, 23, 0, 0);
+  const prod = [
+    { start: nov1, end: nov1 + H, kwh: 10 },
+    { start: dec31_23, end: dec31_23 + H, kwh: 20 },
+  ];
+  const prices = [
+    { start: nov1, end: nov1 + H, sekPerKwh: 1.0, eurPerKwh: 0 },
+    { start: dec31_23, end: dec31_23 + H, sekPerKwh: 2.0, eurPerKwh: 0 },
+  ];
+  // Data spans all of Nov + Dec -> both months are "complete". VAT 25%, fixed fees 120/mån.
+  const r = analyze(prod, prices, { vatRate: 25, gridMonthlyFee: 100, traderMonthlyFee: 20 });
+  const f = r.manads_prognos;
+  approx(f.fullstandiga_manader, 2, "forecast: full months");
+  approx(f.fasta_avgifter_sek_per_man, 120, "forecast: fixed monthly fees");
+  approx(f.snitt_effektiv_ersattning_sek, 31.25, "forecast: avg effective comp (1.25*(10,40))");
+  approx(f.snitt_netto_sek, -88.75, "forecast: avg net after fees");
+  approx(f.snitt_production_kwh, 15, "forecast: avg production");
+  eq(r.aggregates.daily.length, 2, "daily aggregate has 2 days");
+}
+
 console.log(failures === 0 ? "\nALL PASSED" : `\n${failures} FAILURE(S)`);
 process.exit(failures === 0 ? 0 : 1);

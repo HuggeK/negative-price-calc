@@ -22,6 +22,7 @@ import {
   PiggyBank,
   Banknote,
   TrendingDown as TrendingDownIcon,
+  CalendarDays,
 } from "lucide-react";
 import { PriceChart } from "./price-chart";
 import { LossChart } from "./loss-chart";
@@ -90,6 +91,29 @@ interface AnalysisData {
       negative_kwh?: number;
       negative_value_sek?: number;
     }>;
+    daily?: Array<{
+      date?: string;
+      production_kwh?: number;
+      revenue_sek?: number;
+      negative_kwh?: number;
+      negative_value_sek?: number;
+    }>;
+  };
+  manads_prognos?: {
+    fullstandiga_manader?: number;
+    elnat_avgift_sek_per_man?: number;
+    elhandel_avgift_sek_per_man?: number;
+    fasta_avgifter_sek_per_man?: number;
+    manader?: Array<{
+      period?: string;
+      production_kwh?: number;
+      effektiv_ersattning_sek?: number;
+      fasta_avgifter_sek?: number;
+      netto_sek?: number;
+    }>;
+    snitt_production_kwh?: number;
+    snitt_effektiv_ersattning_sek?: number;
+    snitt_netto_sek?: number;
   };
   natanslutning?: {
     sakring_amp?: number;
@@ -187,6 +211,15 @@ function formatOreSigned(valueSek: number | undefined, decimals = 1): string {
   return `${sign}${formatNumber(Math.abs(valueSek) * 100, decimals)} öre`;
 }
 
+/** Format a "YYYY-MM" period as "maj 2026". */
+function formatMonth(period: string | undefined): string {
+  if (!period) return "";
+  const m = period.match(/^(\d{4})-(\d{2})/);
+  if (!m) return period;
+  const months = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "okt", "nov", "dec"];
+  return `${months[parseInt(m[2], 10) - 1]} ${m[1]}`;
+}
+
 /** Format a wall-clock ISO timestamp as "15 maj 13:45" (no timezone shift). */
 function formatLossTime(iso: string | undefined): string {
   if (!iso) return "";
@@ -246,6 +279,24 @@ function isQuarterHour(granularity: string | undefined): boolean {
   return g === "15min" || g === "15-min" || g === "quarterly";
 }
 
+/**
+ * Express the analysed duration in the data's native resolution unit, e.g. "4 992 kvartar"
+ * for 15-minute data (1 h = 4 quarters), "1 248 timmar" for hourly, "52 dygn" for daily.
+ */
+function intervalCountLabel(granularity: string | undefined, totalHours: number | undefined): string {
+  if (!totalHours) return "";
+  switch (granularity?.toLowerCase()) {
+    case "15min":
+    case "15-min":
+    case "quarterly":
+      return `${formatNumber(Math.round(totalHours * 4))} kvartar`;
+    case "daily":
+      return `${formatNumber(Math.round(totalHours / 24))} dygn`;
+    default:
+      return `${formatNumber(Math.round(totalHours))} timmar`;
+  }
+}
+
 export function AnalysisResults({
   data,
   metadata,
@@ -287,6 +338,7 @@ export function AnalysisResults({
   const granularityLabel = getGranularityLabel(productionGranularity);
   const priceGranularity = data.meta?.price_granularity;
   const computesOnQuarters = isQuarterHour(productionGranularity) || isQuarterHour(priceGranularity);
+  const intervalLabel = intervalCountLabel(productionGranularity, totalHours);
 
   return (
     <div className="space-y-6">
@@ -313,7 +365,7 @@ export function AnalysisResults({
                 {granularityLabel && (
                   <Badge variant="secondary" className="text-sm">
                     Produktion: {granularityLabel}
-                    {totalHours ? ` (${formatNumber(totalHours)} timmar)` : ""}
+                    {intervalLabel ? ` (${intervalLabel})` : ""}
                   </Badge>
                 )}
                 {priceGranularity && (
@@ -524,6 +576,66 @@ export function AnalysisResults({
         </Card>
       )}
 
+      {/* Monthly forecast — what to expect per full-data month */}
+      {data.manads_prognos && (data.manads_prognos.fullstandiga_manader ?? 0) > 0 && (
+        <Card className="border-primary/20 bg-primary/5">
+          <CardHeader className="pb-2">
+            <div className="flex items-center gap-2">
+              <CalendarDays className="h-5 w-5 text-primary" />
+              <CardTitle className="text-lg">Vad du kan förvänta dig per månad</CardTitle>
+            </div>
+            <CardDescription>
+              Snitt över {formatNumber(data.manads_prognos.fullstandiga_manader)} fullständiga månader med data
+              {(data.manads_prognos.fasta_avgifter_sek_per_man ?? 0) > 0
+                ? `, efter fasta avgifter (${formatCurrency(data.manads_prognos.fasta_avgifter_sek_per_man)}/mån)`
+                : ""}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-baseline gap-2">
+              <span className={`text-3xl font-bold font-mono ${(data.manads_prognos.snitt_netto_sek ?? 0) < 0 ? "text-destructive" : "text-primary"}`}>
+                {formatCurrency(data.manads_prognos.snitt_netto_sek)}
+              </span>
+              <span className="text-muted-foreground">netto per månad i snitt</span>
+            </div>
+            <div className="mt-2 text-sm text-muted-foreground">
+              Ersättning {formatCurrency(data.manads_prognos.snitt_effektiv_ersattning_sek)}/mån − fasta avgifter{" "}
+              {formatCurrency(data.manads_prognos.fasta_avgifter_sek_per_man)}/mån. Snittproduktion{" "}
+              {formatNumber(data.manads_prognos.snitt_production_kwh, 0)} kWh/mån.
+            </div>
+
+            {data.manads_prognos.manader && data.manads_prognos.manader.length > 0 && (
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border/50 text-left text-muted-foreground">
+                      <th className="py-2 pr-4 font-medium">Månad</th>
+                      <th className="py-2 pr-4 font-medium text-right">Produktion</th>
+                      <th className="py-2 pr-4 font-medium text-right">Ersättning</th>
+                      <th className="py-2 pr-4 font-medium text-right">Fasta avgifter</th>
+                      <th className="py-2 font-medium text-right">Netto</th>
+                    </tr>
+                  </thead>
+                  <tbody className="font-mono">
+                    {data.manads_prognos.manader.map((m, i) => (
+                      <tr key={i} className="border-b border-border/30">
+                        <td className="py-1.5 pr-4 font-sans">{formatMonth(m.period)}</td>
+                        <td className="py-1.5 pr-4 text-right">{formatNumber(m.production_kwh, 0)} kWh</td>
+                        <td className="py-1.5 pr-4 text-right">{formatCurrency(m.effektiv_ersattning_sek)}</td>
+                        <td className="py-1.5 pr-4 text-right text-muted-foreground">−{formatCurrency(m.fasta_avgifter_sek)}</td>
+                        <td className={`py-1.5 text-right ${(m.netto_sek ?? 0) < 0 ? "text-destructive" : "text-foreground"}`}>
+                          {formatCurrency(m.netto_sek)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Self-consumption valuation (separate, optional) */}
       {data.sjalvkonsumtion && (
         <Card>
@@ -629,9 +741,9 @@ export function AnalysisResults({
         </Card>
       )}
 
-      {/* Monthly Chart */}
-      {data.aggregates?.monthly && data.aggregates.monthly.length > 1 && (
-        <PriceChart monthlyData={data.aggregates.monthly} />
+      {/* Daily overview chart */}
+      {data.aggregates?.daily && data.aggregates.daily.length > 1 && (
+        <PriceChart dailyData={data.aggregates.daily} />
       )}
 
       {/* AI Explanation */}

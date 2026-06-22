@@ -174,6 +174,23 @@ def test_export_at_loss_quarters():
     assert f["rows"][0]["loss_sek"] == pytest.approx(0.60)  # worst first
 
 
+def test_monthly_forecast_full_months():
+    # Continuous hourly data covering all of Nov + Dec 2025 (both full months).
+    idx = pd.date_range("2025-11-01 00:00", "2025-12-31 23:00", freq="h")
+    prices = pd.DataFrame({"price_eur_per_mwh": [100.0] * len(idx)}, index=idx)  # 1.0 SEK/kWh
+    production = pd.DataFrame({"production_kwh": [1.0] * len(idx)}, index=idx)
+    merged = PriceAnalyzer.merge_data(prices, production, eur_sek_rate=10.0)
+
+    a = PriceAnalyzer.analyze_data(merged, vat_rate=25, grid_monthly_fee=100, trader_monthly_fee=20)
+    f = a["monthly_forecast"]
+    assert f["full_months"] == 2
+    assert f["fixed_monthly_sek"] == pytest.approx(120.0)
+    # Nov 720 kWh -> rev 720 -> eff 900 ; Dec 744 -> rev 744 -> eff 930
+    assert f["avg_production_kwh"] == pytest.approx(732.0)
+    assert f["avg_effective_sek"] == pytest.approx(915.0)
+    assert f["avg_net_sek"] == pytest.approx(795.0)  # (780 + 810) / 2
+
+
 def test_valuation_blocks_omitted_without_inputs():
     idx = pd.date_range("2025-01-01 00:00", periods=2, freq="h")
     prices = pd.DataFrame({"price_eur_per_mwh": [100.0, 200.0]}, index=idx)

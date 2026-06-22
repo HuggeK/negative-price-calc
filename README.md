@@ -32,6 +32,7 @@ When you have solar panels you sell excess electricity to the grid. But spot pri
 - **🔌 Grid-connection analysis** — main-fuse flat-peak detection (3-phase, 400 V)
 - **💱 Export compensation** — per-company (elnät + elhandel), each fixed (öre/kWh) + variable (% of spot) + VAT
 - **📉 Loss-making quarters** — count, chart and table of quarters exported below the break-even price
+- **📅 Monthly forecast** — expected net per full-data month after fixed monthly fees (elnät per fuse class + elhandel)
 - **🏠 Self-consumption valuation** — value of self-use vs. exporting, in a separate section
 - **🪙 Familiar units** — inputs in öre/kWh; results show kronor for totals and öre for per-kWh
 - **🤖 Optional AI summary** — via OpenRouter, using a key you supply (stored only in your browser)
@@ -56,7 +57,8 @@ Sample files live in [`python/data/samples/`](python/data/samples/); the web app
 - **Export compensation** — effective price/kWh and total you actually get paid, split per company (elnät + elhandel), × VAT
 - **Loss-making quarters** — how many quarters you exported below break-even, total estimated loss (kr), a daily chart and a table of the worst occasions
 - **Self-consumption value** — worth of a kWh used yourself vs. exported (when energy tax / grid fee are given)
-- **Monthly breakdown** chart
+- **Monthly forecast** — for each month with full data, the expected net (effective compensation − fixed monthly fees for elnät + elhandel), plus averages
+- **Daily overview** chart — daily net export value (one bar per day)
 
 ## 💰 Price data
 

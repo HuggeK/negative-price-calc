@@ -114,6 +114,8 @@ class PriceAnalyzer:
         grid_pct: float = None,
         trader_fixed: float = None,
         trader_pct: float = None,
+        grid_monthly_fee: float = None,
+        trader_monthly_fee: float = None,
         self_energy_tax: float = None,
         self_grid_fee: float = None,
     ) -> Dict[str, Any]:
@@ -132,6 +134,9 @@ class PriceAnalyzer:
             trader_fixed (float, optional): Elhandelsbolag fixed påslag/avdrag in SEK/kWh
                 (may be negative).
             trader_pct (float, optional): Elhandelsbolag variable påslag/avdrag, % of spot.
+            grid_monthly_fee (float, optional): Elnät fixed monthly fee in SEK/month
+                (varies by fuse class). Used by the monthly_forecast block.
+            trader_monthly_fee (float, optional): Elhandel fixed monthly fee in SEK/month.
             self_energy_tax (float, optional): Energy tax in SEK/kWh. Adds the
                 self-consumption block.
             self_grid_fee (float, optional): Grid/transmission fee in SEK/kWh. Adds the
@@ -376,6 +381,47 @@ class PriceAnalyzer:
                     'total_loss_sek': round(float(loss_df['loss_sek'].sum()), 2),
                     'rows': rows,
                     'series': series,
+                }
+
+        # Monthly forecast over months with full data coverage — "what to expect" per month:
+        # effective compensation minus the fixed monthly fees (elnät + elhandel). Mirrors
+        # analyze.ts. Completeness: data spans (near) the whole calendar month.
+        if total_kwh > 0:
+            g_month = grid_monthly_fee or 0.0
+            t_month = trader_monthly_fee or 0.0
+            fixed_monthly = g_month + t_month
+            pct_frac = (g_pct + t_pct) / 100.0
+            tot_fixed = g_fixed + t_fixed
+            prod_start = merged_df.index.min()
+            prod_end = merged_df.index.max()
+            forecast_months = []
+            for period, grp in merged_df.groupby(merged_df.index.to_period('M')):
+                month_start = period.start_time
+                month_end = period.end_time
+                complete = (prod_start <= month_start) and (prod_end >= month_end - pd.Timedelta(days=1))
+                if not complete:
+                    continue
+                revenue_month = float(grp['export_value_sek'].sum())
+                kwh_month = float(grp['production_kwh'].sum())
+                effective = (1 + vat) * ((1 + pct_frac) * revenue_month + tot_fixed * kwh_month)
+                forecast_months.append({
+                    'period': str(period),
+                    'production_kwh': round(kwh_month, 1),
+                    'effective_sek': round(effective, 2),
+                    'fixed_fees_sek': round(fixed_monthly, 2),
+                    'net_sek': round(effective - fixed_monthly, 2),
+                })
+            if forecast_months:
+                n = len(forecast_months)
+                analysis['monthly_forecast'] = {
+                    'full_months': n,
+                    'grid_monthly_fee_sek': round(g_month, 2),
+                    'trader_monthly_fee_sek': round(t_month, 2),
+                    'fixed_monthly_sek': round(fixed_monthly, 2),
+                    'months': forecast_months,
+                    'avg_production_kwh': round(sum(m['production_kwh'] for m in forecast_months) / n, 1),
+                    'avg_effective_sek': round(sum(m['effective_sek'] for m in forecast_months) / n, 2),
+                    'avg_net_sek': round(sum(m['net_sek'] for m in forecast_months) / n, 2),
                 }
 
         return analysis

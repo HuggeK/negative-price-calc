@@ -73,6 +73,34 @@ export interface AnalysisResult {
       negative_kwh: number;
       negative_value_sek: number;
     }>;
+    /** Per-day aggregation (higher-resolution chart). */
+    daily: Array<{
+      date: string;
+      production_kwh: number;
+      revenue_sek: number;
+      negative_kwh: number;
+      negative_value_sek: number;
+    }>;
+  };
+  /**
+   * Monthly forecast over months with full data coverage — "what to expect" per month:
+   * effective export compensation minus the fixed monthly fees, plus averages.
+   */
+  manads_prognos?: {
+    fullstandiga_manader: number;
+    elnat_avgift_sek_per_man: number;
+    elhandel_avgift_sek_per_man: number;
+    fasta_avgifter_sek_per_man: number;
+    manader: Array<{
+      period: string;
+      production_kwh: number;
+      effektiv_ersattning_sek: number;
+      fasta_avgifter_sek: number;
+      netto_sek: number;
+    }>;
+    snitt_production_kwh: number;
+    snitt_effektiv_ersattning_sek: number;
+    snitt_netto_sek: number;
   };
   /**
    * Effective export compensation: what you actually get paid for exported energy.
