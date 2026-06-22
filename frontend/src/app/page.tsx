@@ -572,7 +572,7 @@ export default function Home() {
                   </div>
 
                   <div className="space-y-2">
-                    <h5 className="text-sm font-medium text-foreground">Elnätsbolag – förlustersättning</h5>
+                    <h5 className="text-sm font-medium text-foreground">Elnätsbolag</h5>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-2">
                         <Label htmlFor="grid-fixed">Fast (öre/kWh)</Label>
@@ -584,7 +584,7 @@ export default function Home() {
                       </div>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Den rörliga delen är <span className="text-foreground">förlustersättningen</span> – oftast ca 5 % av spotpriset.
+                      Den rörliga delen är oftast ca 5 % av spotpriset.
                     </p>
                   </div>
 
