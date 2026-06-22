@@ -603,7 +603,7 @@ export default function Home() {
                   </div>
 
                   <p className="text-xs text-muted-foreground">
-                    Fasta delar anges i öre/kWh (kan vara negativa), rörliga delar i % av spotpriset. Effektivt pris = (spot + förlustersättning [elnät] + påslag/avdrag [elhandel]) × (1 + moms).
+                    Fasta delar anges i öre/kWh, rörliga i % av spotpriset. <span className="text-foreground">Positivt (+)</span> = ersättning, du får mer betalt (påslag); <span className="text-foreground">negativt (−)</span> = avdrag/avgift som sänker din ersättning. Effektivt pris = (spot + förlustersättning [elnät] + påslag/avdrag [elhandel]) × (1 + moms).
                   </p>
                 </div>
 
