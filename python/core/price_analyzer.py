@@ -396,9 +396,9 @@ class PriceAnalyzer:
                     'series': series,
                 }
 
-        # Monthly forecast over months with full data coverage — "what to expect" per month:
-        # effective compensation minus the fixed monthly fees (elnät + elhandel). Mirrors
-        # analyze.ts. Completeness: data spans (near) the whole calendar month.
+        # Monthly forecast — always per FULL month so the fixed monthly fees apply
+        # consistently. Partial months (start/end of the data) are scaled up by their
+        # coverage and flagged. Mirrors analyze.ts.
         if total_kwh > 0:
             g_month = grid_monthly_fee or 0.0
             t_month = trader_monthly_fee or 0.0
@@ -406,28 +406,36 @@ class PriceAnalyzer:
             pct_frac = (g_pct + t_pct) / 100.0
             tot_fixed = g_fixed + t_fixed
             prod_start = merged_df.index.min()
-            prod_end = merged_df.index.max()
+            step_h = float(interval_hours.median()) if len(interval_hours) else 1.0
+            prod_end = merged_df.index.max() + pd.Timedelta(hours=step_h)
             forecast_months = []
             for period, grp in merged_df.groupby(merged_df.index.to_period('M')):
                 month_start = period.start_time
-                month_end = period.end_time
-                complete = (prod_start <= month_start) and (prod_end >= month_end - pd.Timedelta(days=1))
-                if not complete:
-                    continue
+                month_end = (period + 1).start_time  # exclusive (start of next month)
+                covered_start = max(prod_start, month_start)
+                covered_end = min(prod_end, month_end)
+                covered_days = max((covered_end - covered_start).total_seconds() / 86400.0, 0.0)
+                days_in_month = (month_end - month_start).total_seconds() / 86400.0
+                complete = (prod_start <= month_start) and (prod_end >= month_end)
+                scale = 1.0 if (complete or covered_days <= 0) else days_in_month / covered_days
                 revenue_month = float(grp['export_value_sek'].sum())
                 kwh_month = float(grp['production_kwh'].sum())
                 effective = (1 + vat) * ((1 + pct_frac) * revenue_month + tot_fixed * kwh_month)
                 forecast_months.append({
                     'period': str(period),
-                    'production_kwh': round(kwh_month, 1),
-                    'effective_sek': round(effective, 2),
+                    'complete': complete,
+                    'days_with_data': round(covered_days, 1),
+                    'days_in_month': round(days_in_month),
+                    'production_kwh': round(kwh_month * scale, 1),
+                    'effective_sek': round(effective * scale, 2),
                     'fixed_fees_sek': round(fixed_monthly, 2),
-                    'net_sek': round(effective - fixed_monthly, 2),
+                    'net_sek': round(effective * scale - fixed_monthly, 2),
                 })
             if forecast_months:
                 n = len(forecast_months)
                 analysis['monthly_forecast'] = {
-                    'full_months': n,
+                    'months_count': n,
+                    'full_months': sum(1 for m in forecast_months if m['complete']),
                     'grid_monthly_fee_sek': round(g_month, 2),
                     'trader_monthly_fee_sek': round(t_month, 2),
                     'fixed_monthly_sek': round(fixed_monthly, 2),

@@ -272,5 +272,28 @@ console.log("Test 10: self-consumption quarter-price toggle");
   approx(off.sjalvkonsumtion.export_varde_sek_per_kwh, 1.875, "self OFF: export ref still realized (1.5*1.25)");
 }
 
+// --- Test 11: partial month is normalized to a full month ---
+console.log("Test 11: partial month normalized to full month");
+{
+  const prod = [];
+  const prices = [];
+  const apr1 = Date.UTC(2025, 3, 1, 0, 0, 0); // April (30 days)
+  for (let h = 0; h < 15 * 24; h++) {
+    const s = apr1 + h * H; // first 15 days only
+    prod.push({ start: s, end: s + H, kwh: 1 });
+    prices.push({ start: s, end: s + H, sekPerKwh: 1.0, eurPerKwh: 0 });
+  }
+  // 15 of 30 days covered -> scale 2. No VAT/offsets; fixed 100/mån.
+  const r = analyze(prod, prices, { vatRate: 0, gridMonthlyFee: 100 });
+  const f = r.manads_prognos;
+  approx(f.antal_manader, 1, "forecast: months included");
+  approx(f.fullstandiga_manader, 0, "forecast: complete months (April partial)");
+  eq(f.manader[0].complete, false, "forecast: April flagged not complete");
+  approx(f.manader[0].dagar_med_data, 15, "forecast: covered days");
+  approx(f.manader[0].dagar_i_manad, 30, "forecast: days in month");
+  approx(f.manader[0].production_kwh, 720, "forecast: normalized production (360*2)");
+  approx(f.manader[0].netto_sek, 620, "forecast: net (720 - 100 fixed)");
+}
+
 console.log(failures === 0 ? "\nALL PASSED" : `\n${failures} FAILURE(S)`);
 process.exit(failures === 0 ? 0 : 1);

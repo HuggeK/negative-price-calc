@@ -214,6 +214,24 @@ def test_monthly_forecast_full_months():
     assert f["avg_net_sek"] == pytest.approx(795.0)  # (780 + 810) / 2
 
 
+def test_monthly_forecast_normalizes_partial_month():
+    # First 15 of April's 30 days -> scaled up x2 to a full month.
+    idx = pd.date_range("2025-04-01 00:00", periods=15 * 24, freq="h")
+    prices = pd.DataFrame({"price_eur_per_mwh": [100.0] * len(idx)}, index=idx)  # 1.0 SEK/kWh
+    production = pd.DataFrame({"production_kwh": [1.0] * len(idx)}, index=idx)
+    merged = PriceAnalyzer.merge_data(prices, production, eur_sek_rate=10.0)
+
+    f = PriceAnalyzer.analyze_data(merged, grid_monthly_fee=100)["monthly_forecast"]
+    assert f["months_count"] == 1
+    assert f["full_months"] == 0
+    m = f["months"][0]
+    assert m["complete"] is False
+    assert m["days_with_data"] == pytest.approx(15.0, abs=0.2)
+    assert m["days_in_month"] == 30
+    assert m["production_kwh"] == pytest.approx(720.0)  # 360 * 2
+    assert m["net_sek"] == pytest.approx(620.0)  # 720 - 100 fixed
+
+
 def test_valuation_blocks_omitted_without_inputs():
     idx = pd.date_range("2025-01-01 00:00", periods=2, freq="h")
     prices = pd.DataFrame({"price_eur_per_mwh": [100.0, 200.0]}, index=idx)

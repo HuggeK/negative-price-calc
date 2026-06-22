@@ -87,12 +87,17 @@ export interface AnalysisResult {
    * effective export compensation minus the fixed monthly fees, plus averages.
    */
   manads_prognos?: {
+    antal_manader: number;
     fullstandiga_manader: number;
     elnat_avgift_sek_per_man: number;
     elhandel_avgift_sek_per_man: number;
     fasta_avgifter_sek_per_man: number;
     manader: Array<{
       period: string;
+      /** True if the month had full data; false if scaled up from a partial month. */
+      complete: boolean;
+      dagar_med_data: number;
+      dagar_i_manad: number;
       production_kwh: number;
       effektiv_ersattning_sek: number;
       fasta_avgifter_sek: number;

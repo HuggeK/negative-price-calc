@@ -394,35 +394,52 @@ export function analyze(
   const gridMonthlyFee = opts.gridMonthlyFee ?? 0;
   const traderMonthlyFee = opts.traderMonthlyFee ?? 0;
   const fixedMonthly = gridMonthlyFee + traderMonthlyFee;
-  const fullMonths = [...months.entries()]
+  const DAY_MS = 24 * MS_PER_HOUR;
+  // Always express the forecast per FULL month so the fixed monthly fees apply consistently.
+  // Partial months (at the start/end of the data) are scaled up by their coverage and flagged.
+  const forecastMonths = [...months.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([period, mm]) => {
       const [y, mo] = period.split("-").map(Number);
-      const firstOfMonth = Date.UTC(y, mo - 1, 1);
-      const firstOfNext = Date.UTC(y, mo, 1);
-      const complete = prodStart <= firstOfMonth && prodEnd >= firstOfNext;
+      const monthStart = Date.UTC(y, mo - 1, 1);
+      const monthEnd = Date.UTC(y, mo, 1); // exclusive (start of next month)
+      const coveredDays = Math.max(0, Math.min(prodEnd, monthEnd) - Math.max(prodStart, monthStart)) / DAY_MS;
+      const daysInMonth = (monthEnd - monthStart) / DAY_MS;
+      const complete = prodStart <= monthStart && prodEnd >= monthEnd;
+      const scale = complete || coveredDays <= 0 ? 1 : daysInMonth / coveredDays;
       const effective = (1 + vatFrac) * ((1 + totalPctFrac) * mm.revenue_sek + totalFixed * mm.production_kwh);
-      return { period, complete, production_kwh: mm.production_kwh, effective, net: effective - fixedMonthly };
-    })
-    .filter((m) => m.complete);
+      return {
+        period,
+        complete,
+        coveredDays,
+        daysInMonth,
+        production: mm.production_kwh * scale,
+        effective: effective * scale,
+        net: effective * scale - fixedMonthly,
+      };
+    });
 
   const manads_prognos =
-    fullMonths.length > 0
+    forecastMonths.length > 0
       ? {
-          fullstandiga_manader: fullMonths.length,
+          antal_manader: forecastMonths.length,
+          fullstandiga_manader: forecastMonths.filter((m) => m.complete).length,
           elnat_avgift_sek_per_man: round(gridMonthlyFee, 2),
           elhandel_avgift_sek_per_man: round(traderMonthlyFee, 2),
           fasta_avgifter_sek_per_man: round(fixedMonthly, 2),
-          manader: fullMonths.map((m) => ({
+          manader: forecastMonths.map((m) => ({
             period: m.period,
-            production_kwh: round(m.production_kwh, 1),
+            complete: m.complete,
+            dagar_med_data: round(m.coveredDays, 1),
+            dagar_i_manad: Math.round(m.daysInMonth),
+            production_kwh: round(m.production, 1),
             effektiv_ersattning_sek: round(m.effective, 2),
             fasta_avgifter_sek: round(fixedMonthly, 2),
             netto_sek: round(m.net, 2),
           })),
-          snitt_production_kwh: round(fullMonths.reduce((s, m) => s + m.production_kwh, 0) / fullMonths.length, 1),
-          snitt_effektiv_ersattning_sek: round(fullMonths.reduce((s, m) => s + m.effective, 0) / fullMonths.length, 2),
-          snitt_netto_sek: round(fullMonths.reduce((s, m) => s + m.net, 0) / fullMonths.length, 2),
+          snitt_production_kwh: round(forecastMonths.reduce((s, m) => s + m.production, 0) / forecastMonths.length, 1),
+          snitt_effektiv_ersattning_sek: round(forecastMonths.reduce((s, m) => s + m.effective, 0) / forecastMonths.length, 2),
+          snitt_netto_sek: round(forecastMonths.reduce((s, m) => s + m.net, 0) / forecastMonths.length, 2),
         }
       : undefined;
 

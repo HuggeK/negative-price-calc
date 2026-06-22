@@ -73,12 +73,13 @@ export function PriceChart({ dailyData, title = "Daglig översikt" }: PriceChart
                   fontSize: "12px",
                 }}
                 labelStyle={{ color: "#fff" }}
+                itemStyle={{ color: "#fff" }}
                 formatter={(value) => [`${(typeof value === "number" ? value : 0).toFixed(2)} kr`, "Nettovärde"]}
               />
               <ReferenceLine y={0} stroke="#666" />
               <Bar dataKey="revenue" name="Nettovärde" radius={[2, 2, 0, 0]}>
                 {chartData.map((entry, i) => (
-                  <Cell key={i} fill={entry.revenue >= 0 ? "#ffffff" : "#ef4444"} />
+                  <Cell key={i} fill={entry.revenue >= 0 ? "#00FF84" : "#ef4444"} />
                 ))}
               </Bar>
             </BarChart>
@@ -86,7 +87,7 @@ export function PriceChart({ dailyData, title = "Daglig översikt" }: PriceChart
         </div>
         <div className="flex justify-center gap-6 mt-4 text-sm">
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-white" />
+            <div className="w-3 h-3 rounded-full bg-primary" />
             <span className="text-muted-foreground">Positivt nettovärde (kr/dag)</span>
           </div>
           <div className="flex items-center gap-2">

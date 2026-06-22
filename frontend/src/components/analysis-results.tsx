@@ -105,12 +105,16 @@ interface AnalysisData {
     }>;
   };
   manads_prognos?: {
+    antal_manader?: number;
     fullstandiga_manader?: number;
     elnat_avgift_sek_per_man?: number;
     elhandel_avgift_sek_per_man?: number;
     fasta_avgifter_sek_per_man?: number;
     manader?: Array<{
       period?: string;
+      complete?: boolean;
+      dagar_med_data?: number;
+      dagar_i_manad?: number;
       production_kwh?: number;
       effektiv_ersattning_sek?: number;
       fasta_avgifter_sek?: number;
@@ -635,7 +639,7 @@ export function AnalysisResults({
               <CardTitle className="text-lg">Vad du kan förvänta dig per månad</CardTitle>
             </div>
             <CardDescription>
-              Snitt över {formatNumber(data.manads_prognos.fullstandiga_manader)} fullständiga månader med data
+              Per hel månad (delmånader är uppräknade till full månad) över {formatNumber(data.manads_prognos.antal_manader)} månader
               {(data.manads_prognos.fasta_avgifter_sek_per_man ?? 0) > 0
                 ? `, efter fasta avgifter (${formatCurrency(data.manads_prognos.fasta_avgifter_sek_per_man)}/mån)`
                 : ""}
@@ -669,7 +673,12 @@ export function AnalysisResults({
                   <tbody className="font-mono">
                     {data.manads_prognos.manader.map((m, i) => (
                       <tr key={i} className="border-b border-border/30">
-                        <td className="py-1.5 pr-4 font-sans">{formatMonth(m.period)}</td>
+                        <td className="py-1.5 pr-4 font-sans">
+                          {formatMonth(m.period)}
+                          {m.complete === false && (
+                            <span className="text-xs text-muted-foreground"> (uppräknad, {formatNumber(m.dagar_med_data, 0)}/{formatNumber(m.dagar_i_manad, 0)} dgr)</span>
+                          )}
+                        </td>
                         <td className="py-1.5 pr-4 text-right">{formatNumber(m.production_kwh, 0)} kWh</td>
                         <td className="py-1.5 pr-4 text-right">{formatCurrency(m.effektiv_ersattning_sek)}</td>
                         <td className="py-1.5 pr-4 text-right text-muted-foreground">−{formatCurrency(m.fasta_avgifter_sek)}</td>
