@@ -19,7 +19,7 @@ import { Header } from "@/components/header";
 import { FileUpload } from "@/components/file-upload";
 import { StreamingTerminal, LogEntry } from "@/components/streaming-terminal";
 import { AnalysisResults } from "@/components/analysis-results";
-import { parseProductionCsv } from "@/lib/parseProduction";
+import { parseProductionCsv, assessResolution } from "@/lib/parseProduction";
 import { fetchPrices } from "@/lib/prices";
 import { analyze } from "@/lib/analyze";
 import { generateAiSummary } from "@/lib/aiSummary";
@@ -37,11 +37,15 @@ const AI_KEY_STORAGE = "openrouter_key";
 const FORMSPARK_FORM_ID = "ExsKPPKKy";
 
 const GRANULARITY_LABEL: Record<string, string> = {
-  "15min": "15-minutersdata",
-  hourly: "timdata",
+  "15min": "kvartsdata (15 min)",
+  hourly: "timdata (60 min)",
   daily: "dygnsdata",
   unknown: "okänd upplösning",
 };
+
+/** Path to the bundled example file (respects the GitHub Pages base path). */
+const EXAMPLE_FILE_URL = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/exempel-15min.csv`;
+const EXAMPLE_FILE_NAME = "exempel-15min.csv";
 
 /** Parse a numeric text field; empty -> undefined so the engine treats it as "not set". */
 function numOrUndef(s: string): number | undefined {
@@ -82,6 +86,7 @@ export default function Home() {
   const [email, setEmail] = useState("");
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isLoadingExample, setIsLoadingExample] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [showTerminal, setShowTerminal] = useState(false);
   const [hasError, setHasError] = useState(false);
@@ -108,8 +113,9 @@ export default function Home() {
     setLogs((prev) => [...prev, { timestamp, type, message }]);
   }, []);
 
-  const handleAnalyze = useCallback(async () => {
-    if (!selectedFile) {
+  const handleAnalyze = useCallback(async (fileArg?: File) => {
+    const file = fileArg ?? selectedFile;
+    if (!file) {
       toast.error("Välj en fil först");
       return;
     }
@@ -126,16 +132,20 @@ export default function Home() {
     const { signal } = abortControllerRef.current;
 
     try {
-      addLog("info", `Läser in ${selectedFile.name}...`);
-      const text = await selectedFile.text();
+      addLog("info", `Läser in ${file.name}...`);
+      const text = await file.text();
 
       addLog("info", "Tolkar produktionsdata...");
-      const parsed = parseProductionCsv(text, selectedFile.name);
+      const parsed = parseProductionCsv(text, file.name);
       addLog(
         "success",
         `Tolkade ${parsed.rows.length} rader (${GRANULARITY_LABEL[parsed.granularity] ?? parsed.granularity}) ` +
           `– kolumner "${parsed.datetimeColumn}" / "${parsed.productionColumn}".`
       );
+
+      // Validate the input is in 15-minute (quarter-hour) resolution.
+      const resolution = assessResolution(parsed);
+      addLog(resolution.level === "ok" ? "success" : "warning", resolution.message);
 
       const startMs = parsed.rows[0].start;
       const endMs = parsed.rows[parsed.rows.length - 1].end;
@@ -241,6 +251,23 @@ export default function Home() {
     }
     handleAnalyze();
   }, [selectedFile, subscribe, email, handleAnalyze]);
+
+  // Load the bundled 15-minute sample file and run the analysis on it directly.
+  const handleTryExample = useCallback(async () => {
+    setIsLoadingExample(true);
+    try {
+      const res = await fetch(EXAMPLE_FILE_URL);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const file = new File([blob], EXAMPLE_FILE_NAME, { type: "text/csv" });
+      setSelectedFile(file);
+      await handleAnalyze(file);
+    } catch {
+      toast.error("Kunde inte ladda exempelfilen. Försök igen.");
+    } finally {
+      setIsLoadingExample(false);
+    }
+  }, [handleAnalyze]);
 
   const handleReset = useCallback(() => {
     if (abortControllerRef.current) abortControllerRef.current.abort();
@@ -457,7 +484,7 @@ export default function Home() {
                 )}
               </div>
 
-              <Button className="w-full" size="lg" onClick={handleRun} disabled={!selectedFile || isAnalyzing}>
+              <Button className="w-full" size="lg" onClick={handleRun} disabled={!selectedFile || isAnalyzing || isLoadingExample}>
                 {isAnalyzing ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -467,8 +494,26 @@ export default function Home() {
                   "Analysera"
                 )}
               </Button>
+
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={handleTryExample}
+                disabled={isAnalyzing || isLoadingExample}
+              >
+                {isLoadingExample ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Laddar exempel...
+                  </>
+                ) : (
+                  "Prova med exempeldata (15-min)"
+                )}
+              </Button>
               {!selectedFile && (
-                <p className="text-center text-sm text-muted-foreground">Välj en fil ovan för att börja.</p>
+                <p className="text-center text-sm text-muted-foreground">
+                  Välj en fil ovan, eller klicka på <span className="text-foreground">Prova med exempeldata</span> för att testa direkt.
+                </p>
               )}
             </div>
 
@@ -479,7 +524,7 @@ export default function Home() {
                   <span className="text-foreground">Hämta din exportdata</span> – Logga in på Mina Sidor hos ditt nätbolag eller elbolag och exportera din mätardata som CSV.
                 </li>
                 <li>
-                  <span className="text-foreground">Ladda upp filen</span> – Välj filen ovan. Verktyget tolkar tim-, 15-minuters- och dygnsdata automatiskt.
+                  <span className="text-foreground">Ladda upp filen</span> – Välj filen ovan. Bäst resultat med 15-minutersdata (kvart); verktyget tolkar även tim- och dygnsdata automatiskt.
                 </li>
                 <li>
                   <span className="text-foreground">Få din analys</span> – Vi matchar din export mot historiska spotpriser (15-minuters­upplösning från 1 oktober 2025) och räknar ut vad din solel var värd.
@@ -492,7 +537,7 @@ export default function Home() {
                   Nu är det spotpriset som avgör vad din export är värd – och vid negativa priser kan du till och med förlora pengar på att exportera.
                 </p>
                 <p>
-                  <strong className="text-foreground">Krav på data:</strong> En kolumn med datum/tid och en kolumn med exporterad energi i kWh. Bäst resultat med tim- eller 15-minutersdata. (Excel: exportera som CSV.)
+                  <strong className="text-foreground">Krav på data:</strong> En kolumn med datum/tid och en kolumn med exporterad energi i kWh. Datan bör vara i <strong className="text-foreground">15-minutersupplösning (kvart)</strong> – så avräknas den svenska elmarknaden sedan 1 oktober 2025. Tim- och dygnsdata fungerar också, men ger grövre resultat. (Excel: exportera som CSV.)
                 </p>
                 <p className="text-xs italic">
                   Verktyget gör sitt bästa för att tolka olika filformat, men vi tar inget ansvar för analysens exakthet.

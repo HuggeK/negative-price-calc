@@ -30,6 +30,8 @@ export interface ParsedProduction {
   granularity: Granularity;
   /** Median interval length in minutes (used to detect granularity). */
   stepMinutes: number;
+  /** % of consecutive intervals whose spacing equals the dominant step (data regularity). */
+  stepConsistencyPct: number;
   datetimeColumn: string;
   productionColumn: string;
 }

@@ -178,6 +178,13 @@ export function parseProductionCsv(text: string, filename = ""): ParsedProductio
   const stepMinutes = diffsMin.length ? median(diffsMin) : 60;
   const stepMs = stepMinutes * 60000;
 
+  // How regular is the spacing? (share of gaps equal to the dominant step, within 10%).
+  const tol = Math.max(1, stepMinutes * 0.1);
+  const matching = diffsMin.filter((d) => Math.abs(d - stepMinutes) <= tol).length;
+  const stepConsistencyPct = diffsMin.length
+    ? Math.round((matching / diffsMin.length) * 1000) / 10
+    : 100;
+
   const rows: ProductionInterval[] = points.map((p, i) => {
     const next = i + 1 < points.length ? points[i + 1].start : p.start + stepMs;
     // Guard against gaps: cap an interval at the inferred step length.
@@ -189,7 +196,67 @@ export function parseProductionCsv(text: string, filename = ""): ParsedProductio
     rows,
     granularity: granularityFromMinutes(stepMinutes),
     stepMinutes,
+    stepConsistencyPct,
     datetimeColumn: header[dtIdx] || `col${dtIdx}`,
     productionColumn: header[prodIdx] || `col${prodIdx}`,
+  };
+}
+
+/** Result of validating that a parsed file is in 15-minute (quarter-hour) resolution. */
+export interface ResolutionAssessment {
+  granularity: Granularity;
+  stepMinutes: number;
+  consistencyPct: number;
+  /** True when the data is in 15-minute (quarter-hour) resolution. */
+  isQuarterHour: boolean;
+  /** "ok" when it's clean 15-min data, otherwise "warning". */
+  level: "ok" | "warning";
+  message: string;
+}
+
+/**
+ * Validate that production data is in 15-minute (quarter-hour) resolution.
+ *
+ * The analysis is interval-aware and still works for hourly/daily input, but the
+ * Swedish market moved to 15-minute settlement on 2025-10-01 and quarter-hour data
+ * is required to see negative-price quarters and short export peaks. This surfaces a
+ * clear message the UI (and CLI) can show.
+ */
+export function assessResolution(parsed: ParsedProduction): ResolutionAssessment {
+  const { granularity, stepMinutes, stepConsistencyPct } = parsed;
+  const base = { granularity, stepMinutes, consistencyPct: stepConsistencyPct };
+
+  if (granularity === "15min") {
+    if (stepConsistencyPct < 90) {
+      return {
+        ...base,
+        isQuarterHour: true,
+        level: "warning",
+        message:
+          `Datan ser ut att vara 15-minutersdata, men bara ${stepConsistencyPct}% av intervallen ` +
+          `är exakt 15 minuter (ojämn tidsstämpling). Kontrollera filen om resultatet ser fel ut.`,
+      };
+    }
+    return {
+      ...base,
+      isQuarterHour: true,
+      level: "ok",
+      message: "Upplösning bekräftad: 15-minutersdata (kvart).",
+    };
+  }
+
+  const what =
+    granularity === "hourly"
+      ? "timupplösning (60 minuter)"
+      : granularity === "daily"
+        ? "dygnsupplösning"
+        : `okänd upplösning (~${stepMinutes} min mellan rader)`;
+  return {
+    ...base,
+    isQuarterHour: false,
+    level: "warning",
+    message:
+      `Filen är i ${what}, inte 15-minutersdata. Analysen körs ändå (intervallmedveten), ` +
+      `men för att fånga negativa kvartar och korta effekttoppar rekommenderas 15-minutersdata.`,
   };
 }

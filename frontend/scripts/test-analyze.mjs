@@ -1,6 +1,7 @@
 // Sanity tests for the interval-aware analysis engine.
 // Run: node --experimental-strip-types frontend/scripts/test-analyze.mjs
 import { analyze } from "../src/lib/analyze.ts";
+import { parseProductionCsv, assessResolution } from "../src/lib/parseProduction.ts";
 
 let failures = 0;
 function approx(actual, expected, label, eps = 1e-6) {
@@ -10,6 +11,15 @@ function approx(actual, expected, label, eps = 1e-6) {
     console.error(`  ✗ ${label}: got ${actual}, expected ${expected}`);
   } else {
     console.log(`  ✓ ${label} = ${actual}`);
+  }
+}
+
+function eq(actual, expected, label) {
+  if (actual !== expected) {
+    failures++;
+    console.error(`  ✗ ${label}: got ${JSON.stringify(actual)}, expected ${JSON.stringify(expected)}`);
+  } else {
+    console.log(`  ✓ ${label} = ${JSON.stringify(actual)}`);
   }
 }
 
@@ -116,6 +126,42 @@ console.log("Test 5: VAT / self-consumption valuation");
   approx(s.undvikna_avgifter_sek_per_kwh, 1.25, "avoided fees+tax incl VAT");
   approx(s.varde_self_sek_per_kwh, 3.125, "self-consumption value");
   approx(s.okning_vs_export_sek_per_kwh, 1.625, "increment vs export");
+}
+
+// --- Test 6: 15-minute parsing + resolution validation ---
+console.log("Test 6: 15-min parsing + resolution validation");
+{
+  const lines = ["Datum;Produktion kWh"];
+  const t0 = Date.UTC(2026, 4, 1, 0, 0, 0); // 2026-05-01 00:00
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(t0 + i * 15 * 60000);
+    const iso = d.toISOString().slice(0, 16).replace("T", " "); // "2026-05-01 00:15"
+    lines.push(`${iso};0,${i}`);
+  }
+  const parsed = parseProductionCsv(lines.join("\n"), "kvart.csv");
+  eq(parsed.granularity, "15min", "granularity detected");
+  approx(parsed.stepMinutes, 15, "step minutes");
+  approx(parsed.stepConsistencyPct, 100, "step consistency %");
+  const a = assessResolution(parsed);
+  eq(a.isQuarterHour, true, "assessResolution.isQuarterHour");
+  eq(a.level, "ok", "assessResolution.level");
+}
+
+// --- Test 7: hourly file is flagged as NOT quarter-hour ---
+console.log("Test 7: hourly file flagged as not 15-min");
+{
+  const lines = ["Datum;Produktion kWh"];
+  const t0 = Date.UTC(2026, 4, 1, 0, 0, 0);
+  for (let i = 0; i < 6; i++) {
+    const d = new Date(t0 + i * 60 * 60000);
+    const iso = d.toISOString().slice(0, 16).replace("T", " ");
+    lines.push(`${iso};1,5`);
+  }
+  const parsed = parseProductionCsv(lines.join("\n"), "tim.csv");
+  eq(parsed.granularity, "hourly", "granularity detected");
+  const a = assessResolution(parsed);
+  eq(a.isQuarterHour, false, "assessResolution.isQuarterHour");
+  eq(a.level, "warning", "assessResolution.level");
 }
 
 console.log(failures === 0 ? "\nALL PASSED" : `\n${failures} FAILURE(S)`);

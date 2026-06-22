@@ -107,6 +107,12 @@ interface AnalysisData {
     undvikna_avgifter_sek_per_kwh?: number;
     okning_vs_export_sek_per_kwh?: number;
   };
+  meta?: {
+    price_granularity?: string;
+    price_intervals?: number;
+    production_intervals?: number;
+    matched_kwh_pct?: number;
+  };
 }
 
 interface AnalysisResultsProps {
@@ -150,16 +156,38 @@ function formatSwedishDate(dateStr: string | undefined): string {
 function getGranularityLabel(granularity: string | undefined): string {
   switch (granularity?.toLowerCase()) {
     case "hourly":
-      return "Timdata";
+      return "Timdata (60 min)";
     case "15min":
     case "15-min":
     case "quarterly":
-      return "15-minutersdata";
+      return "Kvartsdata (15 min)";
     case "daily":
       return "Dygnsdata";
     default:
       return granularity || "";
   }
+}
+
+/** Short resolution label used inline (e.g. for the price badge). */
+function getGranularityShort(granularity: string | undefined): string {
+  switch (granularity?.toLowerCase()) {
+    case "hourly":
+      return "60 min";
+    case "15min":
+    case "15-min":
+    case "quarterly":
+      return "15 min (kvart)";
+    case "daily":
+      return "dygn";
+    default:
+      return granularity || "okänd";
+  }
+}
+
+/** True when a granularity string represents quarter-hour (15-minute) resolution. */
+function isQuarterHour(granularity: string | undefined): boolean {
+  const g = granularity?.toLowerCase();
+  return g === "15min" || g === "15-min" || g === "quarterly";
 }
 
 export function AnalysisResults({
@@ -199,7 +227,10 @@ export function AnalysisResults({
   // Extract date range info
   const startDate = data.input?.date_range?.start ?? data.input?.date_range?.start_utc?.split("T")[0];
   const endDate = data.input?.date_range?.end ?? data.input?.date_range?.end_utc?.split("T")[0];
-  const granularityLabel = getGranularityLabel(data.input?.granularity || metadata.granularity);
+  const productionGranularity = data.input?.granularity || metadata.granularity;
+  const granularityLabel = getGranularityLabel(productionGranularity);
+  const priceGranularity = data.meta?.price_granularity;
+  const computesOnQuarters = isQuarterHour(productionGranularity) || isQuarterHour(priceGranularity);
 
   return (
     <div className="space-y-6">
@@ -215,18 +246,31 @@ export function AnalysisResults({
 
           {/* Prominent Date Range */}
           {startDate && endDate && (
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 border border-primary/20">
-                <Clock className="h-4 w-4 text-primary" />
-                <span className="font-medium text-foreground">
-                  {formatSwedishDate(startDate)} → {formatSwedishDate(endDate)}
-                </span>
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 border border-primary/20">
+                  <Clock className="h-4 w-4 text-primary" />
+                  <span className="font-medium text-foreground">
+                    {formatSwedishDate(startDate)} → {formatSwedishDate(endDate)}
+                  </span>
+                </div>
+                {granularityLabel && (
+                  <Badge variant="secondary" className="text-sm">
+                    Produktion: {granularityLabel}
+                    {totalHours ? ` (${formatNumber(totalHours)} timmar)` : ""}
+                  </Badge>
+                )}
+                {priceGranularity && (
+                  <Badge variant="outline" className="text-sm">
+                    Priser: {getGranularityShort(priceGranularity)}
+                  </Badge>
+                )}
               </div>
-              {granularityLabel && (
-                <Badge variant="secondary" className="text-sm">
-                  {granularityLabel}
-                  {totalHours && ` (${formatNumber(totalHours)} timmar)`}
-                </Badge>
+              {computesOnQuarters && (
+                <p className="text-xs text-muted-foreground">
+                  Beräknat intervallmedvetet per kvart (15 minuter) – produktion och spotpriser
+                  matchas mot varandra på 15-minutersupplösning.
+                </p>
               )}
             </div>
           )}
