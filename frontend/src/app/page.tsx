@@ -50,7 +50,7 @@ const DEFAULT_SETTINGS = {
   traderMonthlyFee: "",
   energyTaxOre: "",
   gridFeeOre: "",
-  traderQuarterPrice: true,
+  traderQuarterPrice: false,
   aiInsights: false,
 };
 
@@ -607,15 +607,20 @@ export default function Home() {
                   </p>
                 </div>
 
-                {/* Self-consumption valuation (separate, optional, collapsible) */}
+                {/* Cost of bought electricity → self-consumption valuation */}
                 <div className="space-y-3 border-t border-border/50 pt-4">
+                  <div className="space-y-1">
+                    <h4 className="text-base font-semibold text-foreground">Kostnad för köpt el</h4>
+                    <p className="text-xs text-muted-foreground">Vad du betalar när du köper el – grunden för värdet av självkonsumtion.</p>
+                  </div>
+
                   <button
                     type="button"
                     onClick={() => setShowSelfConsumption((v) => !v)}
                     className="flex w-full items-center justify-between text-left"
                     aria-expanded={showSelfConsumption}
                   >
-                    <h4 className="text-sm font-medium text-foreground">Värde av självkonsumtion (valfritt)</h4>
+                    <h5 className="text-sm font-medium text-foreground">Värde av självkonsumtion (valfritt)</h5>
                     <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${showSelfConsumption ? "rotate-180" : ""}`} />
                   </button>
                   {showSelfConsumption && (
