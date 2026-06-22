@@ -42,8 +42,8 @@ console.log("Test 1: hourly x hourly");
   approx(r.hero.produktion.totala_intakter_sek, 0.5, "revenue SEK");
   approx(r.hero.export_förluster.kwh_exporterat_med_förlust, 3, "negative kWh");
   approx(r.hero.export_förluster.kostnad_negativ_export_sek, 1.5, "negative cost SEK");
-  approx(r.hero.tidsanalys.totala_timmar, 2, "total hours");
-  approx(r.hero.tidsanalys.negativa_timmar_under_produktion, 1, "negative producing hours");
+  approx(r.hero.tidsanalys.totala_intervaller, 2, "total intervals");
+  approx(r.hero.tidsanalys.negativa_intervaller, 1, "negative producing intervals");
   approx(r.hero.produktion.genomsnittspris_erhållet_sek_per_kwh, 0.1, "realized price");
   approx(r.hero.produktion.enkelt_snitt_pris_sek_per_kwh, 0.25, "simple avg price");
 }
@@ -65,12 +65,13 @@ console.log("Test 2: hourly production x 15-min prices");
   approx(r.hero.produktion.totala_intakter_sek, 1, "revenue SEK");
   approx(r.hero.export_förluster.kwh_exporterat_med_förlust, 1, "negative kWh (one quarter)");
   approx(r.hero.export_förluster.kostnad_negativ_export_sek, 2, "negative cost SEK");
-  approx(r.hero.tidsanalys.totala_timmar, 1, "total hours");
-  approx(r.hero.tidsanalys.negativa_timmar_under_produktion, 0.25, "negative producing hours = 15 min");
+  approx(r.hero.tidsanalys.totala_intervaller, 4, "total intervals (4 quarters)");
   // 15-min producing series: the hour splits into 4 quarters.
   eq(r.series.length, 4, "series: 4 quarters");
   approx(r.series[2].spot_sek_per_kwh, -2, "series: quarter 3 spot price");
   approx(r.series[2].production_kwh, 1, "series: quarter 3 production");
+  approx(r.hero.tidsanalys.produktionsintervaller, 4, "producing intervals (quarters)");
+  approx(r.hero.tidsanalys.negativa_intervaller, 1, "negative price quarters");
 }
 
 // --- Test 3: daily production x hourly prices (coarse production, fine prices) ---
@@ -87,7 +88,7 @@ console.log("Test 3: daily production x hourly prices");
   // 2 hours negative (1 kWh each) => -2 ; 22 hours positive (1 kWh each) => 22 ; total 20
   approx(r.hero.produktion.totala_intakter_sek, 20, "revenue SEK");
   approx(r.hero.export_förluster.kwh_exporterat_med_förlust, 2, "negative kWh");
-  approx(r.hero.tidsanalys.negativa_timmar_under_produktion, 2, "negative producing hours");
+  approx(r.hero.tidsanalys.negativa_intervaller, 2, "negative producing intervals (2 hours)");
 }
 
 // --- Test 4: fuse / grid-connection flat-peak analysis ---
@@ -106,8 +107,7 @@ console.log("Test 4: fuse flat-peak analysis");
   const n = r.natanslutning;
   approx(n.sakring_kw, Math.sqrt(3) * 400 * 16 / 1000, "fuse limit kW", 0.01); // ~11.08
   approx(n.hogsta_effekt_kw, 12, "peak power kW");
-  approx(n.timmar_vid_max, 1, "hours at max (only hour 1)");
-  approx(n.antal_toppar, 1, "number of peaks");
+  approx(n.intervaller_vid_max, 1, "intervals at max (only hour 1)");
   approx(n.andel_tid_vid_max_pct, 50, "share of time at max");
 }
 
@@ -141,6 +141,7 @@ console.log("Test 5: export compensation + self-consumption");
   approx(e.elhandel_total_sek_per_kwh, 0.1, "export: elhandel total (0.10 fast)");
   approx(e.pris_innan_moms_sek_per_kwh, 1.8, "export: price before VAT");
   approx(e.effektivt_pris_sek_per_kwh, 2.25, "export: effective price (incl 25% VAT)");
+  approx(e.brytpunkt_spot_sek_per_kwh, -0.15 / 1.1, "export: break-even spot (-totalFixed/(1+loss%))", 1e-4);
   approx(e.spot_total_sek, 6, "export: spot total");
   approx(e.effektiv_total_sek, 9, "export: effective total");
   approx(e.skillnad_mot_spot_sek, 3, "export: uplift vs spot");

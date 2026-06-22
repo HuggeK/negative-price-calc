@@ -27,7 +27,7 @@ interface MonthAcc {
   revenue_sek: number;
   priceTimesHours: number;
   hours: number;
-  negative_hours: number;
+  negative_intervals: number;
   negative_kwh: number;
   negative_value_sek: number;
 }
@@ -112,6 +112,11 @@ function analyzeExportCompensation(
   const beforeVat = spotWavg + elnatTotal + elhandelTotal;
   const effective = beforeVat * (1 + vat);
   const effectiveTotal = effective * totalKwh;
+  // Break-even spot: the spot price at which the effective price hits zero. Below this you
+  // sell at a loss. Solve (spot·(1+totalPct) + totalFixed) = 0.
+  const totalPctFrac = (gridPct + traderPct) / 100;
+  const totalFixed = gridFixed + traderFixed;
+  const breakEvenSpot = 1 + totalPctFrac !== 0 ? -totalFixed / (1 + totalPctFrac) : 0;
   return {
     moms_pct: round(vat * 100, 1),
     spot_sek_per_kwh: round(spotWavg, 4),
@@ -125,6 +130,7 @@ function analyzeExportCompensation(
     elhandel_total_sek_per_kwh: round(elhandelTotal, 4),
     pris_innan_moms_sek_per_kwh: round(beforeVat, 4),
     effektivt_pris_sek_per_kwh: round(effective, 4),
+    brytpunkt_spot_sek_per_kwh: round(breakEvenSpot, 4),
     spot_total_sek: round(spotTotal, 2),
     effektiv_total_sek: round(effectiveTotal, 2),
     skillnad_mot_spot_sek: round(effectiveTotal - spotTotal, 2),
@@ -207,22 +213,20 @@ function analyzeFusePeaks(
   const limitKw = (SQRT3 * voltage * fuseAmps) / 1000;
   const threshold = limitKw * MAXED_FRACTION;
 
-  let hoursAtMax = 0;
   let energyAtMax = 0;
   let peakKw = 0;
-  let peaks = 0;
-  let totalHours = 0;
+  let intervalsAtMax = 0;
+  let totalIntervals = 0;
 
   for (const p of production) {
     const hours = (p.end - p.start) / MS_PER_HOUR;
     if (hours <= 0) continue;
-    totalHours += hours;
+    totalIntervals += 1;
     const powerKw = p.kwh / hours;
     if (powerKw > peakKw) peakKw = powerKw;
     if (powerKw >= threshold) {
-      hoursAtMax += hours;
+      intervalsAtMax += 1;
       energyAtMax += p.kwh;
-      peaks += 1;
     }
   }
 
@@ -230,10 +234,9 @@ function analyzeFusePeaks(
     sakring_amp: fuseAmps,
     sakring_kw: round(limitKw, 2),
     hogsta_effekt_kw: round(peakKw, 2),
-    timmar_vid_max: round(hoursAtMax, 2),
-    andel_tid_vid_max_pct: round(totalHours > 0 ? (hoursAtMax / totalHours) * 100 : 0, 1),
+    intervaller_vid_max: intervalsAtMax,
+    andel_tid_vid_max_pct: round(totalIntervals > 0 ? (intervalsAtMax / totalIntervals) * 100 : 0, 1),
     energi_vid_max_kwh: round(energyAtMax, 2),
-    antal_toppar: peaks,
   };
 }
 
@@ -253,18 +256,19 @@ export function analyze(
   let totalProductionKwh = 0;
   let revenueSek = 0;
   let priceTimesHours = 0; // for duration-weighted average price during production
-  let coveredHours = 0; // production hours that had price coverage
-  let producingHours = 0; // covered hours with energy > 0
+  let coveredHours = 0; // production hours that had price coverage (internal, for avg price)
+  let coveredIntervals = 0; // count of all covered intervals (≈ quarters for 15-min data)
+  let producingIntervals = 0; // count of producing intervals (≈ quarters for 15-min data)
+  let negProducingIntervals = 0; // producing intervals where price < 0
   let negKwh = 0;
   let negValueSek = 0;
-  let negProducingHours = 0; // hours where price < 0 AND exporting
 
   const zeroAcc = (): MonthAcc => ({
     production_kwh: 0,
     revenue_sek: 0,
     priceTimesHours: 0,
     hours: 0,
-    negative_hours: 0,
+    negative_intervals: 0,
     negative_kwh: 0,
     negative_value_sek: 0,
   });
@@ -343,7 +347,8 @@ export function analyze(
       revenueSek += value;
       priceTimesHours += q.sekPerKwh * hours;
       coveredHours += hours;
-      if (energy > 0) producingHours += hours;
+      coveredIntervals += 1;
+      if (energy > 0) producingIntervals += 1;
 
       const m = getMonth(p.start);
       const d = getDay(p.start);
@@ -359,13 +364,13 @@ export function analyze(
       if (q.sekPerKwh < 0) {
         negKwh += energy;
         negValueSek += value; // negative
-        if (energy > 0) negProducingHours += hours;
+        if (energy > 0) negProducingIntervals += 1;
         m.negative_kwh += energy;
         m.negative_value_sek += value;
-        if (energy > 0) m.negative_hours += hours;
+        if (energy > 0) m.negative_intervals += 1;
         d.negative_kwh += energy;
         d.negative_value_sek += value;
-        if (energy > 0) d.negative_hours += hours;
+        if (energy > 0) d.negative_intervals += 1;
       }
 
       // Per-interval (15-min) producing series + quarters exported at a loss.
@@ -385,15 +390,15 @@ export function analyze(
     }
   }
 
-  // Total hours where the market price was negative across the covered range (regardless
-  // of whether we were producing) — informative "negativa timmar totalt".
+  // Count of price intervals that were negative across the covered range (regardless of
+  // whether we were producing) — informative "negativa intervaller totalt".
   const prodStart = sortedProd[0].start;
   const prodEnd = sortedProd[sortedProd.length - 1].end;
-  let negativeHoursTotal = 0;
+  let negativeIntervalsTotal = 0;
   for (const q of sortedPrice) {
     if (q.sekPerKwh >= 0) continue;
     const overlapMs = Math.min(prodEnd, q.end) - Math.max(prodStart, q.start);
-    if (overlapMs > 0) negativeHoursTotal += overlapMs / MS_PER_HOUR;
+    if (overlapMs > 0) negativeIntervalsTotal += 1;
   }
 
   const realizedPrice = totalMatchedKwh > 0 ? revenueSek / totalMatchedKwh : 0;
@@ -407,7 +412,7 @@ export function analyze(
       production_kwh: round(m.production_kwh, 3),
       revenue_sek: round(m.revenue_sek, 2),
       avg_price_sek_per_kwh: round(m.hours > 0 ? m.priceTimesHours / m.hours : 0, 4),
-      negative_hours: round(m.negative_hours, 2),
+      negative_intervaller: m.negative_intervals,
       negative_kwh: round(m.negative_kwh, 3),
       negative_value_sek: round(m.negative_value_sek, 2),
     }));
@@ -540,16 +545,17 @@ export function analyze(
         timing_förlust_pct: round(timingLossPct, 1),
       },
       export_förluster: {
-        timmar_som_kostat_dig: round(negProducingHours, 2),
+        intervaller_som_kostat_dig: negProducingIntervals,
         kwh_exporterat_med_förlust: round(negKwh, 3),
         andel_olönsam_export_pct: round(totalMatchedKwh > 0 ? (negKwh / totalMatchedKwh) * 100 : 0, 1),
         kostnad_negativ_export_sek: round(Math.abs(negValueSek), 2),
       },
       tidsanalys: {
-        totala_timmar: round(coveredHours, 2),
-        produktionstimmar: round(producingHours, 2),
-        negativa_timmar_totalt: round(negativeHoursTotal, 2),
-        negativa_timmar_under_produktion: round(negProducingHours, 2),
+        intervall_minuter: segMinutes,
+        totala_intervaller: coveredIntervals,
+        produktionsintervaller: producingIntervals,
+        negativa_intervaller_totalt: negativeIntervalsTotal,
+        negativa_intervaller: negProducingIntervals,
       },
     },
     input: {

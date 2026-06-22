@@ -224,6 +224,10 @@ class PriceAnalyzer:
         negative_mask = merged_df['price_eur_per_mwh'] < 0
         negative_prices = merged_df[negative_mask]
         analysis['negative_price_intervals'] = len(negative_prices)
+        # Counts of producing intervals (≈ quarters for 15-min data); mirrors the web hero card.
+        producing_mask = merged_df['production_kwh'] > 0
+        analysis['producing_intervals'] = int(producing_mask.sum())
+        analysis['negative_producing_intervals'] = int((producing_mask & negative_mask).sum())
         analysis['negative_price_hours'] = float(interval_hours[negative_mask].sum())  # duration
         analysis['production_during_negative_prices'] = negative_prices['production_kwh'].sum()
         analysis['negative_export_cost_sek'] = negative_prices['export_value_sek'].sum()  # This will be negative

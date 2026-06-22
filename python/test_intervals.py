@@ -47,6 +47,8 @@ def test_hourly_x_hourly_matches_simple_multiplication():
     assert a["negative_price_hours"] == pytest.approx(1.0)
     assert a["hours_with_production"] == pytest.approx(2.0)
     assert a["negative_export_cost_abs_sek"] == pytest.approx(1.5)
+    assert a["producing_intervals"] == 2
+    assert a["negative_producing_intervals"] == 1  # the negative-price hour produces
 
 
 def test_hourly_production_x_15min_prices_surfaces_negative_quarter():

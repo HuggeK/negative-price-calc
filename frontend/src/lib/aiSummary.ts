@@ -32,17 +32,17 @@ function buildFacts(result: AnalysisResult, area: string): string {
     realiserat_pris_sek_per_kwh: p.genomsnittspris_erhållet_sek_per_kwh,
     marknadssnitt_pris_sek_per_kwh: p.enkelt_snitt_pris_sek_per_kwh,
     timing_förlust_pct: p.timing_förlust_pct,
-    timmar_med_negativt_pris_under_export: e.timmar_som_kostat_dig,
+    kvartar_med_negativt_pris_under_export: e.intervaller_som_kostat_dig,
     kwh_exporterat_vid_negativt_pris: e.kwh_exporterat_med_förlust,
     kostnad_negativ_export_sek: e.kostnad_negativ_export_sek,
     andel_olönsam_export_pct: e.andel_olönsam_export_pct,
-    totala_timmar: t.totala_timmar,
+    totala_kvartar: t.totala_intervaller,
   };
   if (result.natanslutning) {
     facts.säkring_amp = result.natanslutning.sakring_amp;
     facts.säkring_effektgräns_kw = result.natanslutning.sakring_kw;
     facts.högsta_effekt_kw = result.natanslutning.hogsta_effekt_kw;
-    facts.timmar_vid_maxad_anslutning = result.natanslutning.timmar_vid_max;
+    facts.kvartar_vid_maxad_anslutning = result.natanslutning.intervaller_vid_max;
     facts.andel_tid_vid_max_pct = result.natanslutning.andel_tid_vid_max_pct;
   }
   return JSON.stringify(facts, null, 2);

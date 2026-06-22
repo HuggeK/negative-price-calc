@@ -47,16 +47,23 @@ export interface AnalysisResult {
       timing_förlust_pct: number;
     };
     export_förluster: {
-      timmar_som_kostat_dig: number;
+      /** Count of producing intervals (≈ quarters) where exporting cost you (price < 0). */
+      intervaller_som_kostat_dig: number;
       kwh_exporterat_med_förlust: number;
       andel_olönsam_export_pct: number;
       kostnad_negativ_export_sek: number;
     };
     tidsanalys: {
-      totala_timmar: number;
-      produktionstimmar: number;
-      negativa_timmar_totalt: number;
-      negativa_timmar_under_produktion: number;
+      /** Nominal interval length in minutes (15 = quarters). */
+      intervall_minuter: number;
+      /** Count of all covered intervals (≈ quarters for 15-min data). */
+      totala_intervaller: number;
+      /** Count of producing intervals. */
+      produktionsintervaller: number;
+      /** Count of intervals where the spot price was negative across the range. */
+      negativa_intervaller_totalt: number;
+      /** Count of producing intervals where the spot price was negative. */
+      negativa_intervaller: number;
     };
   };
   input: {
@@ -92,7 +99,7 @@ export interface AnalysisResult {
       production_kwh: number;
       revenue_sek: number;
       avg_price_sek_per_kwh: number;
-      negative_hours: number;
+      negative_intervaller: number;
       negative_kwh: number;
       negative_value_sek: number;
     }>;
@@ -150,6 +157,8 @@ export interface AnalysisResult {
     elhandel_total_sek_per_kwh: number;
     pris_innan_moms_sek_per_kwh: number;
     effektivt_pris_sek_per_kwh: number;
+    /** Spot price (SEK/kWh) below which export becomes a loss, given the offsets. */
+    brytpunkt_spot_sek_per_kwh: number;
     spot_total_sek: number;
     effektiv_total_sek: number;
     skillnad_mot_spot_sek: number;
@@ -208,10 +217,10 @@ export interface AnalysisResult {
     sakring_amp: number;
     sakring_kw: number;
     hogsta_effekt_kw: number;
-    timmar_vid_max: number;
+    /** Count of intervals (≈ quarters) at/above the fuse limit. */
+    intervaller_vid_max: number;
     andel_tid_vid_max_pct: number;
     energi_vid_max_kwh: number;
-    antal_toppar: number;
   };
   meta: {
     price_granularity: Granularity;

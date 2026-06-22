@@ -44,16 +44,17 @@ interface AnalysisData {
       timing_förlust_pct?: number;
     };
     export_förluster?: {
-      timmar_som_kostat_dig?: number;
+      intervaller_som_kostat_dig?: number;
       kwh_exporterat_med_förlust?: number;
       andel_olönsam_export_pct?: number;
       kostnad_negativ_export_sek?: number;
     };
     tidsanalys?: {
-      totala_timmar?: number;
-      produktionstimmar?: number;
-      negativa_timmar_totalt?: number;
-      negativa_timmar_under_produktion?: number;
+      intervall_minuter?: number;
+      totala_intervaller?: number;
+      produktionsintervaller?: number;
+      negativa_intervaller_totalt?: number;
+      negativa_intervaller?: number;
     };
     tekniska_mått?: {
       hours_total?: number;
@@ -93,7 +94,7 @@ interface AnalysisData {
       production_kwh?: number;
       revenue_sek?: number;
       avg_price_sek_per_kwh?: number;
-      negative_hours?: number;
+      negative_intervaller?: number;
       negative_kwh?: number;
       negative_value_sek?: number;
     }>;
@@ -129,10 +130,9 @@ interface AnalysisData {
     sakring_amp?: number;
     sakring_kw?: number;
     hogsta_effekt_kw?: number;
-    timmar_vid_max?: number;
+    intervaller_vid_max?: number;
     andel_tid_vid_max_pct?: number;
     energi_vid_max_kwh?: number;
-    antal_toppar?: number;
   };
   forlust_export?: {
     antal?: number;
@@ -162,6 +162,7 @@ interface AnalysisData {
     elhandel_total_sek_per_kwh?: number;
     pris_innan_moms_sek_per_kwh?: number;
     effektivt_pris_sek_per_kwh?: number;
+    brytpunkt_spot_sek_per_kwh?: number;
     spot_total_sek?: number;
     effektiv_total_sek?: number;
     skillnad_mot_spot_sek?: number;
@@ -354,20 +355,20 @@ function isQuarterHour(granularity: string | undefined): boolean {
 }
 
 /**
- * Express the analysed duration in the data's native resolution unit, e.g. "4 992 kvartar"
- * for 15-minute data (1 h = 4 quarters), "1 248 timmar" for hourly, "52 dygn" for daily.
+ * Label an interval count in the data's native resolution unit, e.g. "4 992 kvartar"
+ * for 15-minute data, "52 dygn" for daily, "X intervall" otherwise.
  */
-function intervalCountLabel(granularity: string | undefined, totalHours: number | undefined): string {
-  if (!totalHours) return "";
+function intervalCountLabel(granularity: string | undefined, count: number | undefined): string {
+  if (count == null) return "";
   switch (granularity?.toLowerCase()) {
     case "15min":
     case "15-min":
     case "quarterly":
-      return `${formatNumber(Math.round(totalHours * 4))} kvartar`;
+      return `${formatNumber(count)} kvartar`;
     case "daily":
-      return `${formatNumber(Math.round(totalHours / 24))} dygn`;
+      return `${formatNumber(count)} dygn`;
     default:
-      return `${formatNumber(Math.round(totalHours))} timmar`;
+      return `${formatNumber(count)} intervall`;
   }
 }
 
@@ -388,17 +389,18 @@ export function AnalysisResults({
   // Use Swedish structure first, then tekniska_mått, then legacy flat
   const totalExport = produktion.total_kwh ?? tekniskaMatt.production_kwh ?? hero.production_kwh;
   const totalRevenue = produktion.totala_intakter_sek ?? tekniskaMatt.revenue_sek ?? hero.revenue_sek;
-  const negativeHours = exportForluster.timmar_som_kostat_dig ?? tidsanalys.negativa_timmar_under_produktion ?? tekniskaMatt.hours_negative_during_production ?? hero.hours_negative_total;
-  const totalHours = tidsanalys.totala_timmar ?? tekniskaMatt.hours_total ?? hero.hours_total;
+  const totalIntervals = tidsanalys.totala_intervaller;
   const negativeCost = exportForluster.kostnad_negativ_export_sek ?? tekniskaMatt.negative_value_sek ?? hero.negative_value_sek;
   const realizedPrice = produktion.genomsnittspris_erhållet_sek_per_kwh ?? tekniskaMatt.realized_price_wavg_sek_per_kwh ?? hero.realized_price_wavg_sek_per_kwh;
   const avgPrice = produktion.enkelt_snitt_pris_sek_per_kwh ?? tekniskaMatt.simple_average_price_sek_per_kwh ?? hero.simple_average_price_sek_per_kwh;
-  const negativeExportPercent = exportForluster.andel_olönsam_export_pct;
 
-  const negativeHoursPercent =
-    totalHours && negativeHours
-      ? ((negativeHours / totalHours) * 100).toFixed(1)
-      : negativeExportPercent?.toFixed(1) ?? "0";
+  // Negative-price exposure counted in intervals (≈ quarters for 15-min data).
+  const negativeIntervals = tidsanalys.negativa_intervaller;
+  const producingIntervalCount = tidsanalys.produktionsintervaller;
+  const negativeIntervalPct =
+    producingIntervalCount && negativeIntervals != null
+      ? ((negativeIntervals / producingIntervalCount) * 100).toFixed(1)
+      : null;
 
   // Positive = your realized price was LOWER than the period's simple average (a "discount").
   const timingDiscountPct =
@@ -413,7 +415,7 @@ export function AnalysisResults({
   const granularityLabel = getGranularityLabel(productionGranularity);
   const priceGranularity = data.meta?.price_granularity;
   const computesOnQuarters = isQuarterHour(productionGranularity) || isQuarterHour(priceGranularity);
-  const intervalLabel = intervalCountLabel(productionGranularity, totalHours);
+  const intervalLabel = intervalCountLabel(productionGranularity, totalIntervals);
 
   return (
     <div className="space-y-6">
@@ -504,16 +506,16 @@ export function AnalysisResults({
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Negativa pristimmar
+              {isQuarterHour(productionGranularity) ? "Negativa priskvartar" : "Negativa prisintervall"}
             </CardTitle>
             <Clock className="h-4 w-4 text-destructive" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold font-mono">
-              {formatNumber(negativeHours)}
-              <span className="text-lg text-muted-foreground ml-2">
-                ({negativeHoursPercent}%)
-              </span>
+              {formatNumber(negativeIntervals)}
+              {negativeIntervalPct != null && (
+                <span className="text-lg text-muted-foreground ml-2">({negativeIntervalPct}%)</span>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -581,7 +583,8 @@ export function AnalysisResults({
             <div className="grid gap-4 sm:grid-cols-3">
               <div>
                 <div className="text-2xl font-bold font-mono">
-                  {formatNumber(data.natanslutning.timmar_vid_max, 1)} <span className="text-base">h</span>
+                  {formatNumber(data.natanslutning.intervaller_vid_max)}{" "}
+                  <span className="text-base">{isQuarterHour(productionGranularity) ? "kvartar" : "intervall"}</span>
                 </div>
                 <p className="text-sm text-muted-foreground">
                   vid max ({formatNumber(data.natanslutning.andel_tid_vid_max_pct, 1)}% av tiden)
@@ -627,7 +630,16 @@ export function AnalysisResults({
               </span>
               <span className="text-muted-foreground">effektivt pris</span>
             </div>
-            <div className="mt-2 space-y-0.5 text-sm text-muted-foreground">
+            {data.exportersattning.brytpunkt_spot_sek_per_kwh !== undefined && (
+              <div className="mt-3 rounded-md border border-border/50 bg-background/60 px-3 py-2 text-sm">
+                Du säljer med förlust när spotpriset går under{" "}
+                <span className="font-mono font-semibold text-foreground">
+                  {formatOre(data.exportersattning.brytpunkt_spot_sek_per_kwh)}/kWh
+                </span>
+                .
+              </div>
+            )}
+            <div className="mt-3 space-y-0.5 text-sm text-muted-foreground">
               <div>Spotpris: {formatOre(data.exportersattning.spot_sek_per_kwh)}/kWh</div>
               <div>
                 Elnätsbolag (förlustersättning): {formatOreSigned(data.exportersattning.elnat_total_sek_per_kwh)}/kWh

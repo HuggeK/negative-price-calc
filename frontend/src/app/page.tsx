@@ -14,7 +14,7 @@ import {
   Checkbox,
 } from "@sourceful-energy/ui";
 import { toast } from "sonner";
-import { X, Sparkles, Loader2, ChevronDown } from "lucide-react";
+import { X, Sparkles, Loader2, ChevronDown, Upload } from "lucide-react";
 import { Header } from "@/components/header";
 import { FileUpload } from "@/components/file-upload";
 import { StreamingTerminal, LogEntry } from "@/components/streaming-terminal";
@@ -316,7 +316,7 @@ export default function Home() {
       if (analysis.natanslutning) {
         addLog(
           "info",
-          `Nätanslutning: ${analysis.natanslutning.timmar_vid_max} h vid max (säkring ${fuseAmps}A ≈ ${analysis.natanslutning.sakring_kw} kW).`
+          `Nätanslutning: ${analysis.natanslutning.intervaller_vid_max} intervall vid max (säkring ${fuseAmps}A ≈ ${analysis.natanslutning.sakring_kw} kW).`
         );
       }
       // Echo the settings used (display units) into the result for export + display.
@@ -829,7 +829,7 @@ export default function Home() {
                 </p>
               )}
 
-              <div className="pt-2 text-center">
+              <div className="pt-2">
                 <input
                   ref={jsonInputRef}
                   type="file"
@@ -842,12 +842,12 @@ export default function Home() {
                   }}
                 />
                 <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-muted-foreground hover:text-foreground"
+                  variant="outline"
+                  className="w-full"
                   onClick={() => jsonInputRef.current?.click()}
                   disabled={isAnalyzing || isLoadingExample}
                 >
+                  <Upload className="mr-2 h-4 w-4" />
                   Ladda in sparat resultat (JSON)
                 </Button>
               </div>
