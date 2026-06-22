@@ -74,15 +74,35 @@ export interface AnalysisResult {
       negative_value_sek: number;
     }>;
   };
-  /** Self-consumption valuation (payment/VAT settings). Present when any cost input is given. */
+  /**
+   * Effective export compensation: what you actually get paid for exported energy.
+   * Model: (spot + förlustersättning[% av spot] + fast påslag/avdrag) × (1 + moms).
+   * Present when any export-compensation setting (fixed / loss% / VAT) is given.
+   */
+  exportersattning?: {
+    moms_pct: number;
+    spot_sek_per_kwh: number;
+    forlust_pct: number;
+    forlustersattning_sek_per_kwh: number;
+    fast_del_sek_per_kwh: number;
+    pris_innan_moms_sek_per_kwh: number;
+    effektivt_pris_sek_per_kwh: number;
+    spot_total_sek: number;
+    effektiv_total_sek: number;
+    skillnad_mot_spot_sek: number;
+  };
+  /**
+   * Self-consumption valuation: what a kWh is worth if you use it yourself instead of
+   * exporting it. value_self = (spot + energiskatt + nätavgift) × (1 + moms); compared
+   * to the effective export compensation. Present when energy tax / grid fee is given.
+   */
   sjalvkonsumtion?: {
-    vat_pct: number;
+    moms_pct: number;
+    spot_sek_per_kwh: number;
     energiskatt_sek_per_kwh: number;
     natavgift_sek_per_kwh: number;
     varde_self_sek_per_kwh: number;
-    spot_netto_sek_per_kwh: number;
-    spot_brutto_sek_per_kwh: number;
-    undvikna_avgifter_sek_per_kwh: number;
+    export_varde_sek_per_kwh: number;
     okning_vs_export_sek_per_kwh: number;
   };
   /** Grid-connection (main fuse) peak analysis. Only present when a fuse size is given. */

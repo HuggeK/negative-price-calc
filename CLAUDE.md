@@ -36,12 +36,12 @@ node --experimental-strip-types frontend/scripts/test-analyze.mjs
 ## Architecture Overview
 
 ### Frontend (deployed app) — `frontend/src/`
-- `app/page.tsx` — upload UI, settings (fuse, VAT/energy-tax/grid-fee, AI toggle), runs the analysis, renders results
+- `app/page.tsx` — upload UI, settings (fuse, VAT, export compensation [fixed öre ± / loss %], self-consumption [energy tax + grid fee, öre], AI toggle), runs the analysis, renders results. Inputs are in öre/kWh.
 - `components/` — results cards, price chart, streaming log, file upload
 - `lib/` — the client-side engine:
   - `parseProduction.ts` — CSV parsing (Swedish formats: semicolon, decimal comma, BOM; hourly/15-min/daily) + `assessResolution()` 15-min validation
   - `prices.ts` — **elprisetjustnu.se** price client (CORS, no key, SEK/kWh, native 15-min)
-  - `analyze.ts` — **interval-aware** analysis via overlap allocation; fuse flat-peak + self-consumption valuation
+  - `analyze.ts` — **interval-aware** analysis via overlap allocation; fuse flat-peak + export-compensation (elnät förlustersättning %, elhandel påslag/avdrag, VAT) + self-consumption valuation
   - `aiSummary.ts` — optional Swedish AI summary via OpenRouter (browser, user-supplied key)
 
 ### Python library / CLI — `python/core/`, `python/cli/`

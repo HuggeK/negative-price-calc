@@ -29,7 +29,7 @@ Everything is client-side TypeScript in `frontend/src/lib/`:
 - `parseProduction.ts` — parse the CSV (Swedish formats; hourly/15-min/daily)
 - `prices.ts` — fetch spot prices (elprisetjustnu.se API), already in SEK/kWh
 - `analyze.ts` — interval-aware analysis: negative-price exposure, timing discount,
-  grid-connection flat peaks (main fuse), and self-consumption valuation (VAT/fees)
+  grid-connection flat peaks (main fuse), export compensation (elnät förlustersättning + elhandel påslag/avdrag + VAT) and self-consumption valuation
 - `aiSummary.ts` — optional Swedish summary via OpenRouter
 
 ## Deploy

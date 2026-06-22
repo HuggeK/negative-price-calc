@@ -107,8 +107,8 @@ console.log("Test 4: fuse flat-peak analysis");
   approx(n.andel_tid_vid_max_pct, 50, "share of time at max");
 }
 
-// --- Test 5: self-consumption valuation (payment / VAT) ---
-console.log("Test 5: VAT / self-consumption valuation");
+// --- Test 5: export compensation + self-consumption valuation ---
+console.log("Test 5: export compensation + self-consumption");
 {
   const prod = [
     { start: base, end: base + H, kwh: 2 },
@@ -118,14 +118,40 @@ console.log("Test 5: VAT / self-consumption valuation");
     { start: base, end: base + H, sekPerKwh: 1.0, eurPerKwh: 0 },
     { start: base + H, end: base + 2 * H, sekPerKwh: 2.0, eurPerKwh: 0 },
   ];
-  const r = analyze(prod, prices, { vatRate: 25, energyTax: 0.4, transmissionFee: 0.6 });
+  // realized spot = (2*1 + 2*2)/4 = 1.5 ; spot revenue = 6 ; total = 4 kWh
+  const r = analyze(prod, prices, {
+    vatRate: 25,
+    exportLossPct: 10,
+    exportFixed: 0.1, // 10 öre/kWh
+    selfEnergyTax: 0.4,
+    selfGridFee: 0.6,
+  });
+
+  const e = r.exportersattning;
+  approx(e.spot_sek_per_kwh, 1.5, "export: spot");
+  approx(e.forlustersattning_sek_per_kwh, 0.15, "export: loss comp (10% of 1.5)");
+  approx(e.fast_del_sek_per_kwh, 0.1, "export: fixed part");
+  approx(e.pris_innan_moms_sek_per_kwh, 1.75, "export: price before VAT");
+  approx(e.effektivt_pris_sek_per_kwh, 2.1875, "export: effective price (incl 25% VAT)");
+  approx(e.spot_total_sek, 6, "export: spot total");
+  approx(e.effektiv_total_sek, 8.75, "export: effective total");
+  approx(e.skillnad_mot_spot_sek, 2.75, "export: uplift vs spot");
+
   const s = r.sjalvkonsumtion;
-  // realized spot = (2*1 + 2*2)/4 = 1.5
-  approx(s.spot_netto_sek_per_kwh, 1.5, "spot net");
-  approx(s.spot_brutto_sek_per_kwh, 1.875, "spot gross (incl 25% VAT)");
-  approx(s.undvikna_avgifter_sek_per_kwh, 1.25, "avoided fees+tax incl VAT");
-  approx(s.varde_self_sek_per_kwh, 3.125, "self-consumption value");
-  approx(s.okning_vs_export_sek_per_kwh, 1.625, "increment vs export");
+  approx(s.spot_sek_per_kwh, 1.5, "self: spot");
+  approx(s.varde_self_sek_per_kwh, 3.125, "self: value (spot+tax+fee)*1.25");
+  approx(s.export_varde_sek_per_kwh, 2.1875, "self: export reference price");
+  approx(s.okning_vs_export_sek_per_kwh, 0.9375, "self: increment vs export");
+}
+
+// --- Test 5b: blocks are omitted when their inputs are absent ---
+console.log("Test 5b: optional blocks omitted without inputs");
+{
+  const prod = [{ start: base, end: base + H, kwh: 2 }];
+  const prices = [{ start: base, end: base + H, sekPerKwh: 1.0, eurPerKwh: 0 }];
+  const r = analyze(prod, prices, {}); // no settings at all
+  eq(r.exportersattning, undefined, "no export block without inputs");
+  eq(r.sjalvkonsumtion, undefined, "no self-consumption block without inputs");
 }
 
 // --- Test 6: 15-minute parsing + resolution validation ---

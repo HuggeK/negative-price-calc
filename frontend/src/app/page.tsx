@@ -55,6 +55,12 @@ function numOrUndef(s: string): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+/** Parse an öre/kWh input into SEK/kWh (÷100); empty -> undefined. */
+function oreToSek(s: string): number | undefined {
+  const n = numOrUndef(s);
+  return n === undefined ? undefined : n / 100;
+}
+
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
@@ -78,8 +84,12 @@ export default function Home() {
   const [selectedArea, setSelectedArea] = useState("SE_4");
   const [fuseAmps, setFuseAmps] = useState(""); // "" = Vet ej / skip
   const [vatRate, setVatRate] = useState("25");
-  const [energyTax, setEnergyTax] = useState("");
-  const [gridFee, setGridFee] = useState("");
+  // Export compensation (what you get paid for exported energy). Inputs in öre/kWh.
+  const [exportFixedOre, setExportFixedOre] = useState(""); // fast påslag/avdrag (±)
+  const [exportLossPct, setExportLossPct] = useState("5"); // förlustersättning, % av spot
+  // Self-consumption valuation (separate, optional). Inputs in öre/kWh.
+  const [energyTaxOre, setEnergyTaxOre] = useState("");
+  const [gridFeeOre, setGridFeeOre] = useState("");
   const [aiInsights, setAiInsights] = useState(false);
   const [aiKey, setAiKey] = useState("");
   const [subscribe, setSubscribe] = useState(false);
@@ -181,8 +191,10 @@ export default function Home() {
         priceGranularity: priceData.granularity,
         fuseAmps: fuseAmps ? Number(fuseAmps) : undefined,
         vatRate: numOrUndef(vatRate),
-        energyTax: numOrUndef(energyTax),
-        transmissionFee: numOrUndef(gridFee),
+        exportFixed: oreToSek(exportFixedOre),
+        exportLossPct: numOrUndef(exportLossPct),
+        selfEnergyTax: oreToSek(energyTaxOre),
+        selfGridFee: oreToSek(gridFeeOre),
       });
 
       if (analysis.meta.matched_kwh_pct < 99.5) {
@@ -231,7 +243,7 @@ export default function Home() {
     } finally {
       setIsAnalyzing(false);
     }
-  }, [selectedFile, selectedArea, fuseAmps, vatRate, energyTax, gridFee, aiInsights, aiKey, addLog]);
+  }, [selectedFile, selectedArea, fuseAmps, vatRate, exportFixedOre, exportLossPct, energyTaxOre, gridFeeOre, aiInsights, aiKey, addLog]);
 
   // Run analysis immediately (report shown in-browser). Subscription is optional and,
   // when opted in, submitted best-effort without blocking the analysis.
@@ -399,23 +411,47 @@ export default function Home() {
                   </p>
                 </div>
 
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="vat">Moms (%)</Label>
-                    <Input id="vat" inputMode="decimal" value={vatRate} onChange={(e) => setVatRate(e.target.value)} placeholder="25" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="tax">Energiskatt (kr/kWh)</Label>
-                    <Input id="tax" inputMode="decimal" value={energyTax} onChange={(e) => setEnergyTax(e.target.value)} placeholder="t.ex. 0,4282" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="fee">Nätavgift (kr/kWh)</Label>
-                    <Input id="fee" inputMode="decimal" value={gridFee} onChange={(e) => setGridFee(e.target.value)} placeholder="t.ex. 0,25" />
-                  </div>
+                <div className="space-y-2">
+                  <Label htmlFor="vat">Moms (%)</Label>
+                  <Input id="vat" inputMode="decimal" value={vatRate} onChange={(e) => setVatRate(e.target.value)} placeholder="25" className="max-w-[8rem]" />
+                  <p className="text-xs text-muted-foreground">Används för både ersättningen nedan och värdet av självkonsumtion.</p>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Anges för att värdera självkonsumtion: värde = (spotpris + energiskatt + nätavgift) × (1, moms). Lämna tomt för att hoppa över.
-                </p>
+
+                {/* Export compensation: split into the two companies that pay you */}
+                <div className="space-y-3 border-t border-border/50 pt-4">
+                  <h4 className="text-sm font-medium text-foreground">Ersättning för exporterad el</h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="trader-offset">Elhandelsbolag: påslag/avdrag (öre/kWh)</Label>
+                      <Input id="trader-offset" inputMode="decimal" value={exportFixedOre} onChange={(e) => setExportFixedOre(e.target.value)} placeholder="t.ex. 8 eller -2" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="grid-loss">Elnätsbolag: förlustersättning (% av spot)</Label>
+                      <Input id="grid-loss" inputMode="decimal" value={exportLossPct} onChange={(e) => setExportLossPct(e.target.value)} placeholder="t.ex. 5" />
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Två separata ersättningar: ett fast påslag/avdrag från ditt <strong className="text-foreground">elhandelsbolag</strong> (öre/kWh, kan vara negativt) och förlustersättning från ditt <strong className="text-foreground">elnätsbolag</strong> (% av spotpris, ofta ca 5 %). Effektivt pris = (spot + förlustersättning + påslag/avdrag) × (1 + moms).
+                  </p>
+                </div>
+
+                {/* Self-consumption valuation (separate, optional) */}
+                <div className="space-y-3 border-t border-border/50 pt-4">
+                  <h4 className="text-sm font-medium text-foreground">Värde av självkonsumtion (valfritt)</h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="tax">Energiskatt (öre/kWh)</Label>
+                      <Input id="tax" inputMode="decimal" value={energyTaxOre} onChange={(e) => setEnergyTaxOre(e.target.value)} placeholder="t.ex. 42,82" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="fee">Nätavgift (öre/kWh)</Label>
+                      <Input id="fee" inputMode="decimal" value={gridFeeOre} onChange={(e) => setGridFeeOre(e.target.value)} placeholder="t.ex. 25" />
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Visar vad en kWh är värd om du använder den själv – (spotpris + energiskatt + nätavgift) × (1 + moms) – jämfört med att exportera den. Lämna tomt för att hoppa över.
+                  </p>
+                </div>
               </div>
 
               {/* AI summarization toggle */}
@@ -537,7 +573,10 @@ export default function Home() {
                   Nu är det spotpriset som avgör vad din export är värd – och vid negativa priser kan du till och med förlora pengar på att exportera.
                 </p>
                 <p>
-                  <strong className="text-foreground">Krav på data:</strong> En kolumn med datum/tid och en kolumn med exporterad energi i kWh. Datan bör vara i <strong className="text-foreground">15-minutersupplösning (kvart)</strong> – så avräknas den svenska elmarknaden sedan 1 oktober 2025. Tim- och dygnsdata fungerar också, men ger grövre resultat. (Excel: exportera som CSV.)
+                  <strong className="text-foreground">Krav på data:</strong> En kolumn med datum/tid och en kolumn med exporterad energi i kWh. Datan bör vara i <strong className="text-foreground">15-minutersupplösning (kvart)</strong> – så avräknas den svenska elmarknaden sedan 1 oktober 2025. (Excel: exportera som CSV.)
+                </p>
+                <p>
+                  <strong className="text-foreground">Obs om timdata:</strong> Tim- och dygnsdata fungerar tekniskt, men ger <strong className="text-foreground">ingen bra analys</strong> – negativa kvartar och korta effekttoppar jämnas ut och missas, så resultatet blir missvisande. Använd 15-minutersdata för ett rättvisande resultat.
                 </p>
                 <p className="text-xs italic">
                   Verktyget gör sitt bästa för att tolka olika filformat, men vi tar inget ansvar för analysens exakthet.

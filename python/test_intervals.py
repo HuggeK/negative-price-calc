@@ -118,6 +118,49 @@ def test_no_fuse_means_no_grid_connection_block():
     assert "grid_connection" not in PriceAnalyzer.analyze_data(merged)
 
 
+def test_export_compensation_and_self_consumption():
+    # spot [1.0, 2.0] SEK/kWh (eur_mwh [100,200] * 10/1000), production [2, 2] kWh.
+    idx = pd.date_range("2025-01-01 00:00", periods=2, freq="h")
+    prices = pd.DataFrame({"price_eur_per_mwh": [100.0, 200.0]}, index=idx)
+    production = pd.DataFrame({"production_kwh": [2.0, 2.0]}, index=idx)
+    merged = PriceAnalyzer.merge_data(prices, production, eur_sek_rate=10.0)
+
+    a = PriceAnalyzer.analyze_data(
+        merged,
+        vat_rate=25,
+        export_loss_pct=10,
+        export_fixed=0.1,
+        self_energy_tax=0.4,
+        self_grid_fee=0.6,
+    )
+
+    # realized spot = (2*1 + 2*2)/4 = 1.5
+    e = a["export_compensation"]
+    assert e["spot_sek_per_kwh"] == pytest.approx(1.5)
+    assert e["loss_compensation_sek_per_kwh"] == pytest.approx(0.15)  # 10% of 1.5
+    assert e["fixed_sek_per_kwh"] == pytest.approx(0.1)
+    assert e["price_before_vat_sek_per_kwh"] == pytest.approx(1.75)
+    assert e["effective_price_sek_per_kwh"] == pytest.approx(2.1875)  # * 1.25
+    assert e["spot_total_sek"] == pytest.approx(6.0)
+    assert e["effective_total_sek"] == pytest.approx(8.75)
+    assert e["uplift_vs_spot_sek"] == pytest.approx(2.75)
+
+    s = a["self_consumption"]
+    assert s["value_self_sek_per_kwh"] == pytest.approx(3.125)  # (1.5+0.4+0.6)*1.25
+    assert s["export_value_sek_per_kwh"] == pytest.approx(2.1875)
+    assert s["increment_vs_export_sek_per_kwh"] == pytest.approx(0.9375)
+
+
+def test_valuation_blocks_omitted_without_inputs():
+    idx = pd.date_range("2025-01-01 00:00", periods=2, freq="h")
+    prices = pd.DataFrame({"price_eur_per_mwh": [100.0, 200.0]}, index=idx)
+    production = pd.DataFrame({"production_kwh": [2.0, 2.0]}, index=idx)
+    merged = PriceAnalyzer.merge_data(prices, production, eur_sek_rate=10.0)
+    a = PriceAnalyzer.analyze_data(merged)  # no valuation inputs
+    assert "export_compensation" not in a
+    assert "self_consumption" not in a
+
+
 def test_granularity_from_hours():
     assert granularity_from_hours(0.25) == "15min"
     assert granularity_from_hours(1.0) == "hourly"

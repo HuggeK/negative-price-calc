@@ -16,9 +16,16 @@ changes there **first**, then mirror them here and add a test. Concretely:
 
 | TypeScript (`frontend/src/lib`) | Python (`python/`) |
 |---|---|
-| `analyze.ts` (overlap allocation, fuse, self-consumption) | `core/price_analyzer.py` |
+| `analyze.ts` (overlap allocation, fuse, export compensation, self-consumption) | `core/price_analyzer.py` `analyze_data()` |
 | `parseProduction.ts` `assessResolution()` | `core/intervals.py` `assess_resolution()` |
 | granularity helpers | `core/intervals.py` |
+
+**Canonical valuation:** the export-compensation `(spot + loss%·spot + fixed)·(1+VAT)`
+and self-consumption `(spot + energy_tax + grid_fee)·(1+VAT)` model lives in
+`core/price_analyzer.analyze_data()` (params `vat_rate`, `export_fixed`,
+`export_loss_pct`, `self_energy_tax`, `self_grid_fee`). Note: `cli/main.py`'s
+`build_storytelling_payload` still carries an older inline self-consumption block
+(export baseline = spot only) and is a follow-up to align to `analyze_data`.
 
 ## Commands (run from `python/`)
 

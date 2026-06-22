@@ -36,12 +36,16 @@ export interface AnalyzeOptions {
   fuseAmps?: number;
   /** Line voltage for the power calculation (default 400 V, Swedish 3-phase). */
   voltage?: number;
-  /** VAT rate, accepted as a fraction (0.25) or a percentage (25). */
+  /** VAT rate, accepted as a fraction (0.25) or a percentage (25). Used by both valuations. */
   vatRate?: number;
-  /** Energy tax in SEK/kWh (avoided when self-consuming). */
-  energyTax?: number;
-  /** Grid transmission fee in SEK/kWh (avoided when self-consuming). */
-  transmissionFee?: number;
+  /** Export: fixed surcharge/deduction in SEK/kWh (may be negative). */
+  exportFixed?: number;
+  /** Export: loss compensation as a percentage of the spot price (e.g. 5 for 5%). */
+  exportLossPct?: number;
+  /** Self-consumption: energy tax in SEK/kWh (avoided when self-consuming). */
+  selfEnergyTax?: number;
+  /** Self-consumption: grid/transmission fee in SEK/kWh (avoided when self-consuming). */
+  selfGridFee?: number;
 }
 
 /** Normalize a VAT input: 25 -> 0.25, 0.25 -> 0.25. */
@@ -51,30 +55,71 @@ function normalizeVat(v: number | undefined): number {
 }
 
 /**
- * Self-consumption valuation (payment/VAT settings). Mirrors the CLI model:
- * value of using a kWh yourself = (spot + energy_tax + transmission_fee) * (1+VAT),
- * while exporting it is valued at the spot price only. The "increment vs export" is
- * therefore how much more a self-consumed kWh is worth than an exported one.
+ * Effective export price per kWh:
+ *   (spot + förlustersättning[loss% of spot] + fast påslag/avdrag) × (1 + moms).
+ * Used both for the export-compensation block and as the comparison baseline for
+ * self-consumption. Affine in spot, so applying it to the energy-weighted average spot
+ * gives the same per-kWh result as a per-interval computation.
+ */
+function effectiveExportPrice(spotWavg: number, opts: AnalyzeOptions): number {
+  const vat = normalizeVat(opts.vatRate);
+  const lossFrac = (opts.exportLossPct ?? 0) / 100;
+  const fixed = opts.exportFixed ?? 0;
+  const beforeVat = spotWavg + spotWavg * lossFrac + fixed;
+  return beforeVat * (1 + vat);
+}
+
+/** Export-compensation block (what you actually get paid for exported energy). */
+function analyzeExportCompensation(
+  spotWavg: number,
+  spotTotal: number,
+  totalKwh: number,
+  opts: AnalyzeOptions
+): NonNullable<AnalysisResult["exportersattning"]> {
+  const vat = normalizeVat(opts.vatRate);
+  const lossPct = opts.exportLossPct ?? 0;
+  const fixed = opts.exportFixed ?? 0;
+  const lossComp = spotWavg * (lossPct / 100);
+  const beforeVat = spotWavg + lossComp + fixed;
+  const effective = beforeVat * (1 + vat);
+  const effectiveTotal = effective * totalKwh;
+  return {
+    moms_pct: round(vat * 100, 1),
+    spot_sek_per_kwh: round(spotWavg, 4),
+    forlust_pct: round(lossPct, 2),
+    forlustersattning_sek_per_kwh: round(lossComp, 4),
+    fast_del_sek_per_kwh: round(fixed, 4),
+    pris_innan_moms_sek_per_kwh: round(beforeVat, 4),
+    effektivt_pris_sek_per_kwh: round(effective, 4),
+    spot_total_sek: round(spotTotal, 2),
+    effektiv_total_sek: round(effectiveTotal, 2),
+    skillnad_mot_spot_sek: round(effectiveTotal - spotTotal, 2),
+  };
+}
+
+/**
+ * Self-consumption valuation. Value of using a kWh yourself instead of exporting it:
+ *   value_self = (spot + energy_tax + grid_fee) × (1 + moms),
+ * compared to the effective export compensation. "Increment vs export" is how much more
+ * a self-consumed kWh is worth than an exported one.
  */
 function analyzeSelfConsumption(
   spotWavg: number,
   opts: AnalyzeOptions
 ): NonNullable<AnalysisResult["sjalvkonsumtion"]> {
   const vat = normalizeVat(opts.vatRate);
-  const tax = opts.energyTax ?? 0;
-  const fee = opts.transmissionFee ?? 0;
-  const spotGross = spotWavg * (1 + vat);
-  const avoided = (tax + fee) * (1 + vat);
-  const valueSelf = spotGross + avoided;
+  const tax = opts.selfEnergyTax ?? 0;
+  const fee = opts.selfGridFee ?? 0;
+  const valueSelf = (spotWavg + tax + fee) * (1 + vat);
+  const exportValue = effectiveExportPrice(spotWavg, opts);
   return {
-    vat_pct: round(vat * 100, 1),
+    moms_pct: round(vat * 100, 1),
+    spot_sek_per_kwh: round(spotWavg, 4),
     energiskatt_sek_per_kwh: round(tax, 4),
     natavgift_sek_per_kwh: round(fee, 4),
     varde_self_sek_per_kwh: round(valueSelf, 4),
-    spot_netto_sek_per_kwh: round(spotWavg, 4),
-    spot_brutto_sek_per_kwh: round(spotGross, 4),
-    undvikna_avgifter_sek_per_kwh: round(avoided, 4),
-    okning_vs_export_sek_per_kwh: round(valueSelf - spotWavg, 4),
+    export_varde_sek_per_kwh: round(exportValue, 4),
+    okning_vs_export_sek_per_kwh: round(valueSelf - exportValue, 4),
   };
 }
 
@@ -242,10 +287,16 @@ export function analyze(
       ? analyzeFusePeaks(sortedProd, opts.fuseAmps, opts.voltage ?? 400)
       : undefined;
 
-  const hasCostInputs =
-    opts.vatRate != null || opts.energyTax != null || opts.transmissionFee != null;
+  const hasExportInputs =
+    opts.vatRate != null || opts.exportFixed != null || opts.exportLossPct != null;
+  const exportersattning =
+    hasExportInputs && totalMatchedKwh > 0
+      ? analyzeExportCompensation(realizedPrice, revenueSek, totalMatchedKwh, opts)
+      : undefined;
+
+  const hasSelfInputs = opts.selfEnergyTax != null || opts.selfGridFee != null;
   const sjalvkonsumtion =
-    hasCostInputs && totalMatchedKwh > 0 ? analyzeSelfConsumption(realizedPrice, opts) : undefined;
+    hasSelfInputs && totalMatchedKwh > 0 ? analyzeSelfConsumption(realizedPrice, opts) : undefined;
 
   return {
     hero: {
@@ -274,6 +325,7 @@ export function analyze(
       granularity: opts.productionGranularity ?? "unknown",
     },
     aggregates: { monthly },
+    exportersattning,
     sjalvkonsumtion,
     natanslutning,
     meta: {

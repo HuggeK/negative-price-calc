@@ -28,7 +28,7 @@ site in `out/`. Set `NEXT_PUBLIC_BASE_PATH` to `/<repo>` for a GitHub Pages proj
 
 - `parseProduction.ts` — CSV parsing (Swedish formats; hourly / 15-min / daily)
 - `prices.ts` — elprisetjustnu.se price client (no key, CORS, SEK/kWh, 15-min)
-- `analyze.ts` — interval-aware analysis (overlap allocation), fuse flat-peak, self-consumption valuation
+- `analyze.ts` — interval-aware analysis (overlap allocation), fuse flat-peak, export compensation + self-consumption valuation
 - `aiSummary.ts` — optional Swedish AI summary via OpenRouter (user-supplied key, in-browser)
 
 Engine sanity tests: `node --experimental-strip-types scripts/test-analyze.mjs`.

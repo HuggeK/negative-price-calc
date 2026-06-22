@@ -105,7 +105,16 @@ class PriceAnalyzer:
         return merged_df
 
     @staticmethod
-    def analyze_data(merged_df: pd.DataFrame, fuse_amps: float = None, voltage: float = 400.0) -> Dict[str, Any]:
+    def analyze_data(
+        merged_df: pd.DataFrame,
+        fuse_amps: float = None,
+        voltage: float = 400.0,
+        vat_rate: float = None,
+        export_fixed: float = None,
+        export_loss_pct: float = None,
+        self_energy_tax: float = None,
+        self_grid_fee: float = None,
+    ) -> Dict[str, Any]:
         """
         Perform comprehensive analysis on merged price and production data.
 
@@ -114,9 +123,20 @@ class PriceAnalyzer:
             fuse_amps (float, optional): Main fuse rating (A). If given, adds a
                 grid-connection "flat peak" analysis (time export power was maxed out).
             voltage (float): Line voltage for the 3-phase power calc (default 400 V).
+            vat_rate (float, optional): VAT, fraction (0.25) or percent (25). Used by both
+                valuations below.
+            export_fixed (float, optional): Export fixed surcharge/deduction in SEK/kWh
+                (may be negative). Adds the export-compensation block.
+            export_loss_pct (float, optional): Export loss compensation as a percentage of
+                the spot price (e.g. 5). Adds the export-compensation block.
+            self_energy_tax (float, optional): Energy tax in SEK/kWh. Adds the
+                self-consumption block.
+            self_grid_fee (float, optional): Grid/transmission fee in SEK/kWh. Adds the
+                self-consumption block.
 
         Returns:
-            Dict[str, Any]: Analysis results with statistics and insights
+            Dict[str, Any]: Analysis results with statistics and insights.
+            Mirrors the TypeScript engine's export-compensation + self-consumption model.
         """
         analysis = {}
 
@@ -252,6 +272,55 @@ class PriceAnalyzer:
                 'share_time_at_max_pct': round(hours_at_max / analysis['total_hours'] * 100, 1) if analysis['total_hours'] else 0.0,
                 'energy_at_max_kwh': round(float(merged_df.loc[maxed, 'production_kwh'].sum()), 2),
                 'peaks': int(maxed.sum()),
+            }
+
+        # Export-compensation + self-consumption valuations. Both use the energy-weighted
+        # average spot during production (realized_spot); the formulas are affine in spot,
+        # so this equals a per-interval computation. Mirrors analyze.ts.
+        total_kwh = float(analysis['production_total'])
+        spot_total = float(analysis['total_export_value_sek'])
+        realized_spot = spot_total / total_kwh if total_kwh else 0.0
+
+        def _norm_vat(v):
+            if v is None:
+                return 0.0
+            return v / 100.0 if v > 1 else v
+
+        vat = _norm_vat(vat_rate)
+        loss_pct = export_loss_pct or 0.0
+        fixed = export_fixed or 0.0
+
+        if total_kwh > 0 and any(x is not None for x in (vat_rate, export_fixed, export_loss_pct)):
+            loss_comp = realized_spot * (loss_pct / 100.0)
+            before_vat = realized_spot + loss_comp + fixed
+            effective = before_vat * (1 + vat)
+            effective_total = effective * total_kwh
+            analysis['export_compensation'] = {
+                'vat_pct': round(vat * 100, 1),
+                'spot_sek_per_kwh': round(realized_spot, 4),
+                'loss_pct': round(loss_pct, 2),
+                'loss_compensation_sek_per_kwh': round(loss_comp, 4),
+                'fixed_sek_per_kwh': round(fixed, 4),
+                'price_before_vat_sek_per_kwh': round(before_vat, 4),
+                'effective_price_sek_per_kwh': round(effective, 4),
+                'spot_total_sek': round(spot_total, 2),
+                'effective_total_sek': round(effective_total, 2),
+                'uplift_vs_spot_sek': round(effective_total - spot_total, 2),
+            }
+
+        if total_kwh > 0 and any(x is not None for x in (self_energy_tax, self_grid_fee)):
+            tax = self_energy_tax or 0.0
+            fee = self_grid_fee or 0.0
+            value_self = (realized_spot + tax + fee) * (1 + vat)
+            export_value = (realized_spot + realized_spot * (loss_pct / 100.0) + fixed) * (1 + vat)
+            analysis['self_consumption'] = {
+                'vat_pct': round(vat * 100, 1),
+                'spot_sek_per_kwh': round(realized_spot, 4),
+                'energy_tax_sek_per_kwh': round(tax, 4),
+                'grid_fee_sek_per_kwh': round(fee, 4),
+                'value_self_sek_per_kwh': round(value_self, 4),
+                'export_value_sek_per_kwh': round(export_value, 4),
+                'increment_vs_export_sek_per_kwh': round(value_self - export_value, 4),
             }
 
         return analysis

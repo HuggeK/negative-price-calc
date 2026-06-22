@@ -20,6 +20,7 @@ import {
   Sparkles,
   Plug,
   PiggyBank,
+  Banknote,
 } from "lucide-react";
 import { PriceChart } from "./price-chart";
 
@@ -97,14 +98,25 @@ interface AnalysisData {
     energi_vid_max_kwh?: number;
     antal_toppar?: number;
   };
+  exportersattning?: {
+    moms_pct?: number;
+    spot_sek_per_kwh?: number;
+    forlust_pct?: number;
+    forlustersattning_sek_per_kwh?: number;
+    fast_del_sek_per_kwh?: number;
+    pris_innan_moms_sek_per_kwh?: number;
+    effektivt_pris_sek_per_kwh?: number;
+    spot_total_sek?: number;
+    effektiv_total_sek?: number;
+    skillnad_mot_spot_sek?: number;
+  };
   sjalvkonsumtion?: {
-    vat_pct?: number;
+    moms_pct?: number;
+    spot_sek_per_kwh?: number;
     energiskatt_sek_per_kwh?: number;
     natavgift_sek_per_kwh?: number;
     varde_self_sek_per_kwh?: number;
-    spot_netto_sek_per_kwh?: number;
-    spot_brutto_sek_per_kwh?: number;
-    undvikna_avgifter_sek_per_kwh?: number;
+    export_varde_sek_per_kwh?: number;
     okning_vs_export_sek_per_kwh?: number;
   };
   meta?: {
@@ -138,6 +150,19 @@ function formatNumber(value: number | undefined, decimals = 0): string {
 function formatCurrency(value: number | undefined): string {
   if (value === undefined || value === null) return "-";
   return `${formatNumber(value, 2)} kr`;
+}
+
+/** Small per-kWh amounts are shown in öre (1 kr = 100 öre). */
+function formatOre(valueSek: number | undefined, decimals = 1): string {
+  if (valueSek === undefined || valueSek === null) return "-";
+  return `${formatNumber(valueSek * 100, decimals)} öre`;
+}
+
+/** Signed öre, e.g. "+8,0 öre" / "−2,0 öre" — for adjustments that can be negative. */
+function formatOreSigned(valueSek: number | undefined, decimals = 1): string {
+  if (valueSek === undefined || valueSek === null) return "-";
+  const sign = valueSek > 0 ? "+" : valueSek < 0 ? "−" : "";
+  return `${sign}${formatNumber(Math.abs(valueSek) * 100, decimals)} öre`;
 }
 
 function formatSwedishDate(dateStr: string | undefined): string {
@@ -372,8 +397,8 @@ export function AnalysisResults({
               </span>
             </div>
             <div className="mt-2 text-sm text-muted-foreground">
-              Realiserat pris: {formatNumber(realizedPrice, 2)} kr/kWh vs
-              snitt: {formatNumber(avgPrice, 2)} kr/kWh
+              Realiserat pris: {formatOre(realizedPrice)}/kWh vs
+              snitt: {formatOre(avgPrice)}/kWh
             </div>
           </CardContent>
         </Card>
@@ -419,30 +444,72 @@ export function AnalysisResults({
         </Card>
       )}
 
-      {/* Self-consumption valuation (payment / VAT) */}
-      {data.sjalvkonsumtion && (
+      {/* Effective export compensation (what you actually get paid) */}
+      {data.exportersattning && (
         <Card className="border-primary/20 bg-primary/5">
+          <CardHeader className="pb-2">
+            <div className="flex items-center gap-2">
+              <Banknote className="h-5 w-5 text-primary" />
+              <CardTitle className="text-lg">Ersättning för exporterad el</CardTitle>
+            </div>
+            <CardDescription>
+              Vad du faktiskt får betalt per exporterad kWh (inkl. {formatNumber(data.exportersattning.moms_pct, 0)}% moms)
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-baseline gap-2">
+              <span
+                className={`text-3xl font-bold font-mono ${
+                  (data.exportersattning.effektivt_pris_sek_per_kwh ?? 0) < 0 ? "text-destructive" : "text-primary"
+                }`}
+              >
+                {formatOre(data.exportersattning.effektivt_pris_sek_per_kwh)}/kWh
+              </span>
+              <span className="text-muted-foreground">effektivt pris</span>
+            </div>
+            <div className="mt-2 text-sm text-muted-foreground">
+              Spot {formatOre(data.exportersattning.spot_sek_per_kwh)} + förlustersättning (elnätsbolag){" "}
+              {formatOre(data.exportersattning.forlustersattning_sek_per_kwh)} ({formatNumber(data.exportersattning.forlust_pct, 1)}%)
+              {" "}+ påslag/avdrag (elhandelsbolag) {formatOreSigned(data.exportersattning.fast_del_sek_per_kwh)} = {formatOre(data.exportersattning.pris_innan_moms_sek_per_kwh)}/kWh innan moms.
+            </div>
+            <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-sm">
+              <span>
+                Effektiv intäkt:{" "}
+                <span className="font-mono font-semibold text-foreground">{formatCurrency(data.exportersattning.effektiv_total_sek)}</span>
+              </span>
+              <span className="text-muted-foreground">
+                ({data.exportersattning.skillnad_mot_spot_sek !== undefined && data.exportersattning.skillnad_mot_spot_sek >= 0 ? "+" : "−"}
+                {formatCurrency(Math.abs(data.exportersattning.skillnad_mot_spot_sek ?? 0))} mot enbart spotpris {formatCurrency(data.exportersattning.spot_total_sek)})
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Self-consumption valuation (separate, optional) */}
+      {data.sjalvkonsumtion && (
+        <Card>
           <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
               <PiggyBank className="h-5 w-5 text-primary" />
               <CardTitle className="text-lg">Värde av självkonsumtion</CardTitle>
             </div>
             <CardDescription>
-              Vad en kWh är värd om du använder den själv (inkl. {formatNumber(data.sjalvkonsumtion.vat_pct, 0)}% moms)
-              jämfört med att exportera till spotpris
+              Vad en kWh är värd om du använder den själv i stället för att exportera den (inkl. {formatNumber(data.sjalvkonsumtion.moms_pct, 0)}% moms)
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline gap-2">
               <span className="text-3xl font-bold font-mono text-primary">
-                {formatNumber(data.sjalvkonsumtion.varde_self_sek_per_kwh, 2)} kr/kWh
+                {formatOre(data.sjalvkonsumtion.varde_self_sek_per_kwh)}/kWh
               </span>
               <span className="text-muted-foreground">vid självkonsumtion</span>
             </div>
             <div className="mt-2 text-sm text-muted-foreground">
-              +{formatNumber(data.sjalvkonsumtion.okning_vs_export_sek_per_kwh, 2)} kr/kWh mer än export
-              (spot brutto {formatNumber(data.sjalvkonsumtion.spot_brutto_sek_per_kwh, 2)} + undvikna avgifter{" "}
-              {formatNumber(data.sjalvkonsumtion.undvikna_avgifter_sek_per_kwh, 2)} kr/kWh)
+              {formatOreSigned(data.sjalvkonsumtion.okning_vs_export_sek_per_kwh)}/kWh jämfört med att exportera
+              ({formatOre(data.sjalvkonsumtion.export_varde_sek_per_kwh)}/kWh). Bygger på spot{" "}
+              {formatOre(data.sjalvkonsumtion.spot_sek_per_kwh)} + energiskatt {formatOre(data.sjalvkonsumtion.energiskatt_sek_per_kwh)} + nätavgift{" "}
+              {formatOre(data.sjalvkonsumtion.natavgift_sek_per_kwh)}.
             </div>
           </CardContent>
         </Card>
