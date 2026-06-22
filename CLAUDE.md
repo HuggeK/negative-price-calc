@@ -39,7 +39,7 @@ node --experimental-strip-types frontend/scripts/test-analyze.mjs
 - `components/` — results cards, price chart, streaming log, file upload
 - `lib/` — the client-side engine:
   - `parseProduction.ts` — CSV parsing (Swedish formats: semicolon, decimal comma, BOM; hourly/15-min/daily)
-  - `prices.ts` — **Sourceful Price API** client (`mainnet.srcful.dev`, no key, EUR/MWh → SEK/kWh)
+  - `prices.ts` — **elprisetjustnu.se** price client (CORS, no key, SEK/kWh, native 15-min)
   - `analyze.ts` — **interval-aware** analysis via overlap allocation; fuse flat-peak + self-consumption valuation
   - `aiSummary.ts` — optional Swedish AI summary via OpenRouter (browser, user-supplied key)
 
@@ -51,7 +51,7 @@ node --experimental-strip-types frontend/scripts/test-analyze.mjs
 
 ### Key concepts
 - **Interval-aware**: never assume "one row = one hour". Production and prices may be hourly, 15-minute (Swedish market from 2025-10-01), or daily; energy/cost and "hours" metrics are computed from each interval's real duration.
-- **Price source**: the browser app uses Sourceful's Price API (a no-key ENTSO-E wrapper). The Python `price_fetcher` uses ENTSO-E directly (key required) plus the bundled SQLite cache.
+- **Price source**: the browser app uses the elprisetjustnu.se API (CORS, no key, 15-min, SEK). ENTSO-E can't be called from the browser (no CORS headers, and a client-side key would be exposed); the Python `price_fetcher` uses ENTSO-E directly (key required) plus the bundled SQLite cache.
 - **Area codes**: `SE1`/`SE_1`/`SE-1` all normalize to the same zone (SE1–SE4).
 
 ## Deployment

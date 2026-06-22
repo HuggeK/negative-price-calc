@@ -1,22 +1,19 @@
-// Client-side electricity price fetching from Sourceful's Price API.
+// Client-side electricity price fetching from elprisetjustnu.se.
 //
-// Sourceful's Price API is a no-key wrapper around ENTSO-E day-ahead data:
-//   GET https://mainnet.srcful.dev/price/electricity/{ZONE}?date=YYYY-MM-DD
-//   -> { "prices": [ { "datetime": <tz-aware ISO>, "price": <EUR/MWh> }, ... ] }
+// Why this source: it is free, requires no API key, sends `Access-Control-Allow-Origin: *`
+// (so it works directly from a static GitHub Pages site), serves the four Swedish bidding
+// zones, and natively returns 15-minute resolution for dates on/after 2025-10-01 (and
+// hourly before that), already in SEK/kWh. Chosen over the Sourceful/ENTSO-E path because
+// it guarantees 15-minute data and works directly from the browser (CORS + no key).
 //
-// Prices are returned in EUR/MWh at absolute timestamps, so we convert each instant to
-// Europe/Stockholm wall-clock (to line up with naive production timestamps) and EUR/MWh
-// to SEK/kWh using an exchange rate (default matches the Python tooling).
-//
-// NOTE: this must be reachable with CORS from the browser; it is Sourceful's own API so
-// that is expected, but verify in-browser if prices fail to load.
+// Endpoint: https://www.elprisetjustnu.se/api/v1/prices/{YYYY}/{MM}-{DD}_{ZONE}.json
+// Returns: [{ SEK_per_kWh, EUR_per_kWh, EXR, time_start, time_end }, ...]
 
 import type { Granularity, PriceInterval } from "./types";
 
-const API_BASE = "https://mainnet.srcful.dev/price/electricity";
-const CACHE_PREFIX = "srcful:v1:";
+const API_BASE = "https://www.elprisetjustnu.se/api/v1/prices";
+const CACHE_PREFIX = "elpris:v1:";
 const CONCURRENCY = 8;
-const DEFAULT_EUR_SEK = 11.5; // EUR -> SEK; ENTSO-E/Sourceful quote EUR/MWh.
 
 export interface PriceFetchProgress {
   done: number;
@@ -24,36 +21,30 @@ export interface PriceFetchProgress {
 }
 
 interface RawPrice {
-  datetime: string;
-  price: number;
+  SEK_per_kWh: number;
+  EUR_per_kWh: number;
+  EXR: number;
+  time_start: string;
+  time_end: string;
 }
 
-/** Map UI area codes (SE_3) and variants to Sourceful zone codes (SE3). */
+/** Map UI area codes (SE_3) and variants to elprisetjustnu zone codes (SE3). */
 export function normalizeZone(area: string): "SE1" | "SE2" | "SE3" | "SE4" {
   const m = String(area).toUpperCase().match(/SE[_-]?([1-4])/);
   if (!m) throw new Error(`Okänt elområde: ${area}`);
   return `SE${m[1]}` as "SE1" | "SE2" | "SE3" | "SE4";
 }
 
-// Convert an absolute instant to Europe/Stockholm wall-clock (ms, treated as naive local),
-// matching how production timestamps are handled elsewhere.
-const stockholmParts = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "Europe/Stockholm",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hour12: false,
-});
-
-function toStockholmWallClock(iso: string): number {
-  const instant = Date.parse(iso); // tz-aware ISO -> absolute UTC ms
-  const p: Record<string, string> = {};
-  for (const part of stockholmParts.formatToParts(new Date(instant))) p[part.type] = part.value;
-  const hour = p.hour === "24" ? 0 : Number(p.hour);
-  return Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), hour, Number(p.minute), Number(p.second));
+/**
+ * Parse an ISO timestamp that carries an offset (e.g. "2025-11-03T00:00:00+01:00")
+ * into a local Europe/Stockholm wall-clock number. We deliberately drop the offset
+ * and treat the wall-clock components as the canonical key, because production files
+ * are naive local time. This mirrors the original tool's tz-naive Stockholm handling.
+ */
+function localWallClock(iso: string): number {
+  // Take the "YYYY-MM-DDTHH:mm:ss" part and interpret it as UTC for stable arithmetic.
+  const naive = iso.slice(0, 19);
+  return Date.parse(naive + "Z");
 }
 
 function dateKey(d: Date): { y: number; m: string; d: string } {
@@ -103,17 +94,17 @@ async function fetchDay(zone: string, d: Date, signal?: AbortSignal): Promise<Ra
   const cached = readCache(key);
   if (cached) return cached;
 
-  const url = `${API_BASE}/${zone}?date=${y}-${m}-${dd}`;
+  const url = `${API_BASE}/${y}/${m}-${dd}_${zone}.json`;
   const res = await fetch(url, { signal });
   if (res.status === 404) {
+    // No data for this date (future date or before coverage). Treat as empty.
     writeCache(key, []);
     return [];
   }
   if (!res.ok) throw new Error(`Prishämtning misslyckades (${res.status}) för ${y}-${m}-${dd}`);
-  const data = await res.json();
-  const prices: RawPrice[] = Array.isArray(data?.prices) ? data.prices : [];
-  writeCache(key, prices);
-  return prices;
+  const data = (await res.json()) as RawPrice[];
+  writeCache(key, data);
+  return data;
 }
 
 /** Run async tasks with a bounded concurrency pool. */
@@ -135,17 +126,15 @@ export interface PriceData {
 
 /**
  * Fetch all price intervals for a zone covering [startMs, endMs] (local wall-clock).
- * One request per calendar day (cached + bounded concurrency); intervals' end times are
- * inferred from the spacing between consecutive points, so hourly and 15-minute data both work.
+ * Fetches one request per calendar day (with cache + bounded concurrency) and flattens.
  */
 export async function fetchPrices(
   area: string,
   startMs: number,
   endMs: number,
-  opts: { signal?: AbortSignal; onProgress?: (p: PriceFetchProgress) => void; eurSek?: number } = {}
+  opts: { signal?: AbortSignal; onProgress?: (p: PriceFetchProgress) => void } = {}
 ): Promise<PriceData> {
   const zone = normalizeZone(area);
-  const eurSek = opts.eurSek ?? DEFAULT_EUR_SEK;
   const days = datesInRange(startMs, endMs);
   const perDay: RawPrice[][] = new Array(days.length);
   let done = 0;
@@ -156,29 +145,18 @@ export async function fetchPrices(
     opts.onProgress?.({ done, total: days.length });
   });
 
-  // Flatten to (start, price) points, convert units/timezone, sort and de-duplicate.
-  const points: Array<{ start: number; eurPerKwh: number }> = [];
+  const intervals: PriceInterval[] = [];
   for (const day of perDay) {
     for (const p of day) {
-      if (p == null || p.datetime == null || p.price == null) continue;
-      points.push({ start: toStockholmWallClock(p.datetime), eurPerKwh: Number(p.price) / 1000 });
+      intervals.push({
+        start: localWallClock(p.time_start),
+        end: localWallClock(p.time_end),
+        sekPerKwh: p.SEK_per_kWh,
+        eurPerKwh: p.EUR_per_kWh,
+      });
     }
   }
-  points.sort((a, b) => a.start - b.start);
-  const unique = points.filter((p, i) => i === 0 || p.start !== points[i - 1].start);
-
-  // Infer the median step to bound the last interval's end.
-  const diffs: number[] = [];
-  for (let i = 1; i < unique.length; i++) diffs.push(unique[i].start - unique[i - 1].start);
-  diffs.sort((a, b) => a - b);
-  const stepMs = diffs.length ? diffs[Math.floor(diffs.length / 2)] : 3_600_000;
-
-  const intervals: PriceInterval[] = unique.map((p, i) => ({
-    start: p.start,
-    end: i + 1 < unique.length ? unique[i + 1].start : p.start + stepMs,
-    eurPerKwh: p.eurPerKwh,
-    sekPerKwh: p.eurPerKwh * eurSek,
-  }));
+  intervals.sort((a, b) => a.start - b.start);
 
   return { intervals, granularity: detectGranularity(intervals) };
 }

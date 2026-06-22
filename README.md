@@ -24,7 +24,7 @@ When you have solar panels you sell excess electricity to the grid. But spot pri
 ## ✨ Key features
 
 - **🔒 Private & serverless** — all parsing, price-matching and analysis run client-side; nothing is uploaded
-- **🔌 No API key for prices** — uses the free [Sourceful Price API](https://docs.sourceful.energy/developer/price-api) (a wrapper around ENTSO-E data)
+- **🔌 No API key for prices** — uses the free [elprisetjustnu.se API](https://www.elprisetjustnu.se/elpris-api) (CORS-enabled, native 15-minute, prices already in SEK)
 - **⏱️ Interval-aware** — correctly handles any mix of hourly / 15-minute / daily data via overlap allocation
 - **🇸🇪 Swedish bidding zones** — SE1–SE4
 - **🔌 Grid-connection analysis** — main-fuse flat-peak detection (3-phase, 400 V)
@@ -53,13 +53,17 @@ Sample files live in [`data/samples/`](data/samples/). The browser app reads **C
 
 ## 💰 Price data
 
-Prices come from the **Sourceful Price API** — a free, no-key wrapper around ENTSO-E day-ahead data:
+Prices come from the free, no-key **[elprisetjustnu.se API](https://www.elprisetjustnu.se/elpris-api)** (CORS-enabled, so it works directly from the browser):
 
 ```
-GET https://mainnet.srcful.dev/price/electricity/{ZONE}?date=YYYY-MM-DD
+GET https://www.elprisetjustnu.se/api/v1/prices/{YYYY}/{MM}-{DD}_{ZONE}.json
 ```
 
-Returned in EUR/MWh at the market resolution (15-minute from 2025-10-01, hourly before) and converted to SEK/kWh in the app. Docs: https://docs.sourceful.energy/developer/price-api
+Returned already in SEK/kWh (and EUR/kWh) at the market resolution — **15-minute** from 2025-10-01, hourly before. elprisetjustnu.se is credited as the price source in the app footer.
+
+### Why not your own ENTSO-E key in the browser?
+
+ENTSO-E's API sends no CORS headers, so a browser on a static site cannot read its responses; and any key placed in client-side code is publicly visible, so it cannot be kept secret. The **browser app** therefore uses elprisetjustnu.se. To use an ENTSO-E key, run the **Python CLI** (`ENTSOE_API_KEY`), which runs locally/server-side where CORS does not apply.
 
 ## 🏗️ Architecture
 
@@ -71,7 +75,7 @@ negative-price-calc/
 │       ├── components/           # Results cards, charts, terminal, upload
 │       └── lib/                  # Client-side engine:
 │           ├── parseProduction.ts  #   CSV parsing (Swedish formats)
-│           ├── prices.ts           #   Sourceful Price API client
+│           ├── prices.ts           #   elprisetjustnu.se price client
 │           ├── analyze.ts          #   interval-aware analysis (overlap allocation)
 │           └── aiSummary.ts        #   optional OpenRouter summary (browser, BYO key)
 ├── core/                         # Python library / CLI (feature parity)
@@ -137,6 +141,6 @@ MIT — see [LICENSE](LICENSE).
 
 ## 🙏 Acknowledgments
 
-- Price data via the [Sourceful Price API](https://docs.sourceful.energy/developer/price-api) (ENTSO-E wrapper)
+- Price data from [elprisetjustnu.se](https://www.elprisetjustnu.se/elpris-api)
 - Built for the Swedish solar community by [Sourceful Energy](https://sourceful.energy)
 ```

@@ -12,7 +12,7 @@ to a server.
 3. (Optional) set main fuse size, VAT / energy tax / grid fee, and the AI summary toggle.
 4. Click **Analysera** — the report renders in the browser; download JSON or CSV.
 
-Prices are fetched in-browser from the free [Sourceful Price API](https://docs.sourceful.energy/developer/price-api) (no key). The optional AI summary runs in-browser via OpenRouter with a key you provide.
+Prices are fetched in-browser from the free [elprisetjustnu.se API](https://www.elprisetjustnu.se/elpris-api) (no key, CORS, 15-min). The optional AI summary runs in-browser via OpenRouter with a key you provide.
 
 ## Run locally
 
@@ -27,7 +27,7 @@ npm run dev      # http://localhost:3000
 Everything is client-side TypeScript in `frontend/src/lib/`:
 
 - `parseProduction.ts` — parse the CSV (Swedish formats; hourly/15-min/daily)
-- `prices.ts` — fetch spot prices (Sourceful Price API) and convert to SEK/kWh
+- `prices.ts` — fetch spot prices (elprisetjustnu.se API), already in SEK/kWh
 - `analyze.ts` — interval-aware analysis: negative-price exposure, timing discount,
   grid-connection flat peaks (main fuse), and self-consumption valuation (VAT/fees)
 - `aiSummary.ts` — optional Swedish summary via OpenRouter

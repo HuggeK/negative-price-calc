@@ -509,9 +509,14 @@ export default function Home() {
             Made with <span className="text-destructive">♥</span> in Kalmar, Sweden
           </p>
           <p className="mt-1">
-            Powered by{" "}
+            Check out{" "}
             <a href="https://sourceful.energy" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
               Sourceful Energy
+            </a>
+            {" • "}
+            Prisdata från{" "}
+            <a href="https://www.elprisetjustnu.se" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
+              elprisetjustnu.se
             </a>
           </p>
         </div>

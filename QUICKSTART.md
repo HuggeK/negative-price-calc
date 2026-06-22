@@ -11,7 +11,7 @@ The app runs entirely in your browser. Open it on GitHub Pages:
 3. (Optional) set your main fuse size and VAT / energy-tax / grid-fee, and toggle the AI summary.
 4. Click **Analysera** — the report appears right in the browser. Download it as JSON or CSV.
 
-Nothing is uploaded to a server: parsing, price-matching and analysis all happen on your device. Prices come from the free [Sourceful Price API](https://docs.sourceful.energy/developer/price-api) (no key required).
+Nothing is uploaded to a server: parsing, price-matching and analysis all happen on your device. Prices come from the free [elprisetjustnu.se API](https://www.elprisetjustnu.se/elpris-api) (no key required), credited as the source in the app.
 
 No file of your own? Try one from [`data/samples/`](data/samples/).
 
