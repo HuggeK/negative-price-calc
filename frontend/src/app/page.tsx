@@ -34,7 +34,24 @@ const AREA_CODES = {
 
 const FUSE_SIZES = ["16", "20", "25", "35", "50", "63"];
 const AI_KEY_STORAGE = "openrouter_key";
+const SETTINGS_STORAGE = "npc:settings:v1";
 const FORMSPARK_FORM_ID = "ExsKPPKKy";
+
+/** Default values for the persisted settings fields (single source of truth). */
+const DEFAULT_SETTINGS = {
+  selectedArea: "SE_4",
+  fuseAmps: "",
+  vatRate: "25",
+  gridFixedOre: "",
+  gridPct: "5",
+  traderFixedOre: "",
+  traderPct: "",
+  gridMonthlyFee: "",
+  traderMonthlyFee: "",
+  energyTaxOre: "",
+  gridFeeOre: "",
+  aiInsights: false,
+};
 
 const GRANULARITY_LABEL: Record<string, string> = {
   "15min": "kvartsdata (15 min)",
@@ -81,23 +98,23 @@ async function submitSubscription(email: string): Promise<void> {
 
 export default function Home() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [selectedArea, setSelectedArea] = useState("SE_4");
-  const [fuseAmps, setFuseAmps] = useState(""); // "" = Vet ej / skip
-  const [vatRate, setVatRate] = useState("25");
+  const [selectedArea, setSelectedArea] = useState(DEFAULT_SETTINGS.selectedArea);
+  const [fuseAmps, setFuseAmps] = useState(DEFAULT_SETTINGS.fuseAmps); // "" = Vet ej / skip
+  const [vatRate, setVatRate] = useState(DEFAULT_SETTINGS.vatRate);
   // Export compensation, split per company. Fixed parts in öre/kWh, variable in % of spot.
   // Elnätsbolag (grid): förlustersättning.
-  const [gridFixedOre, setGridFixedOre] = useState("");
-  const [gridPct, setGridPct] = useState("5");
+  const [gridFixedOre, setGridFixedOre] = useState(DEFAULT_SETTINGS.gridFixedOre);
+  const [gridPct, setGridPct] = useState(DEFAULT_SETTINGS.gridPct);
   // Elhandelsbolag (trader): påslag/avdrag.
-  const [traderFixedOre, setTraderFixedOre] = useState("");
-  const [traderPct, setTraderPct] = useState("");
+  const [traderFixedOre, setTraderFixedOre] = useState(DEFAULT_SETTINGS.traderFixedOre);
+  const [traderPct, setTraderPct] = useState(DEFAULT_SETTINGS.traderPct);
   // Fixed monthly fees (kronor/month, not öre): elnät (per fuse class) + elhandel.
-  const [gridMonthlyFee, setGridMonthlyFee] = useState("");
-  const [traderMonthlyFee, setTraderMonthlyFee] = useState("");
+  const [gridMonthlyFee, setGridMonthlyFee] = useState(DEFAULT_SETTINGS.gridMonthlyFee);
+  const [traderMonthlyFee, setTraderMonthlyFee] = useState(DEFAULT_SETTINGS.traderMonthlyFee);
   // Self-consumption valuation (separate, optional). Inputs in öre/kWh.
-  const [energyTaxOre, setEnergyTaxOre] = useState("");
-  const [gridFeeOre, setGridFeeOre] = useState("");
-  const [aiInsights, setAiInsights] = useState(false);
+  const [energyTaxOre, setEnergyTaxOre] = useState(DEFAULT_SETTINGS.energyTaxOre);
+  const [gridFeeOre, setGridFeeOre] = useState(DEFAULT_SETTINGS.gridFeeOre);
+  const [aiInsights, setAiInsights] = useState(DEFAULT_SETTINGS.aiInsights);
   const [aiKey, setAiKey] = useState("");
   const [subscribe, setSubscribe] = useState(false);
   const [email, setEmail] = useState("");
@@ -120,6 +137,73 @@ export default function Home() {
       /* storage unavailable */
     }
   }, []);
+
+  // Remember the settings fields between visits (not the file or newsletter opt-in).
+  const settingsHydrated = useRef(false);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(SETTINGS_STORAGE);
+      if (raw) {
+        const s = JSON.parse(raw);
+        if (typeof s.selectedArea === "string") setSelectedArea(s.selectedArea);
+        if (typeof s.fuseAmps === "string") setFuseAmps(s.fuseAmps);
+        if (typeof s.vatRate === "string") setVatRate(s.vatRate);
+        if (typeof s.gridFixedOre === "string") setGridFixedOre(s.gridFixedOre);
+        if (typeof s.gridPct === "string") setGridPct(s.gridPct);
+        if (typeof s.traderFixedOre === "string") setTraderFixedOre(s.traderFixedOre);
+        if (typeof s.traderPct === "string") setTraderPct(s.traderPct);
+        if (typeof s.gridMonthlyFee === "string") setGridMonthlyFee(s.gridMonthlyFee);
+        if (typeof s.traderMonthlyFee === "string") setTraderMonthlyFee(s.traderMonthlyFee);
+        if (typeof s.energyTaxOre === "string") setEnergyTaxOre(s.energyTaxOre);
+        if (typeof s.gridFeeOre === "string") setGridFeeOre(s.gridFeeOre);
+        if (typeof s.aiInsights === "boolean") setAiInsights(s.aiInsights);
+      }
+    } catch {
+      /* ignore corrupt/unavailable storage */
+    }
+  }, []);
+
+  // Persist settings on change (skip the very first render so we don't clobber the restore).
+  useEffect(() => {
+    if (!settingsHydrated.current) {
+      settingsHydrated.current = true;
+      return;
+    }
+    try {
+      localStorage.setItem(
+        SETTINGS_STORAGE,
+        JSON.stringify({
+          selectedArea,
+          fuseAmps,
+          vatRate,
+          gridFixedOre,
+          gridPct,
+          traderFixedOre,
+          traderPct,
+          gridMonthlyFee,
+          traderMonthlyFee,
+          energyTaxOre,
+          gridFeeOre,
+          aiInsights,
+        })
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [
+    selectedArea,
+    fuseAmps,
+    vatRate,
+    gridFixedOre,
+    gridPct,
+    traderFixedOre,
+    traderPct,
+    gridMonthlyFee,
+    traderMonthlyFee,
+    energyTaxOre,
+    gridFeeOre,
+    aiInsights,
+  ]);
 
   const addLog = useCallback((type: LogEntry["type"], message: string) => {
     const timestamp = new Date().toLocaleTimeString("sv-SE", {
@@ -300,6 +384,28 @@ export default function Home() {
     setAiSummary(null);
     setLogs([]);
     setHasError(false);
+  }, []);
+
+  // Clear the remembered settings and reset every field to its default.
+  const handleClearSaved = useCallback(() => {
+    try {
+      localStorage.removeItem(SETTINGS_STORAGE);
+    } catch {
+      /* ignore */
+    }
+    setSelectedArea(DEFAULT_SETTINGS.selectedArea);
+    setFuseAmps(DEFAULT_SETTINGS.fuseAmps);
+    setVatRate(DEFAULT_SETTINGS.vatRate);
+    setGridFixedOre(DEFAULT_SETTINGS.gridFixedOre);
+    setGridPct(DEFAULT_SETTINGS.gridPct);
+    setTraderFixedOre(DEFAULT_SETTINGS.traderFixedOre);
+    setTraderPct(DEFAULT_SETTINGS.traderPct);
+    setGridMonthlyFee(DEFAULT_SETTINGS.gridMonthlyFee);
+    setTraderMonthlyFee(DEFAULT_SETTINGS.traderMonthlyFee);
+    setEnergyTaxOre(DEFAULT_SETTINGS.energyTaxOre);
+    setGridFeeOre(DEFAULT_SETTINGS.gridFeeOre);
+    setAiInsights(DEFAULT_SETTINGS.aiInsights);
+    toast.success("Sparade värden rensade");
   }, []);
 
   const handleDownloadJson = useCallback(() => {
@@ -498,6 +604,14 @@ export default function Home() {
                   <p className="text-xs text-muted-foreground">
                     Visar vad en kWh är värd om du använder den själv – (spotpris + energiskatt + nätavgift) × (1 + moms) – jämfört med att exportera den. Lämna tomt för att hoppa över.
                   </p>
+                </div>
+
+                <div className="pt-3 border-t border-border/50 flex items-center justify-between gap-2">
+                  <p className="text-xs text-muted-foreground">Dina värden sparas i webbläsaren till nästa gång.</p>
+                  <Button variant="ghost" size="sm" onClick={handleClearSaved} className="text-muted-foreground hover:text-foreground shrink-0">
+                    <X className="h-4 w-4 mr-2" />
+                    Rensa sparade värden
+                  </Button>
                 </div>
               </div>
 

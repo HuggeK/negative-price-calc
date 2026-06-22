@@ -229,6 +229,18 @@ function formatLossTime(iso: string | undefined): string {
   return `${parseInt(m[3], 10)} ${months[parseInt(m[2], 10) - 1]} ${m[4]}:${m[5]}`;
 }
 
+/** Format an interval as "15 maj 14:00–14:15" given the start and its length in minutes. */
+function formatLossRange(iso: string | undefined, minutes: number | undefined): string {
+  const start = formatLossTime(iso);
+  if (!iso || !minutes || minutes <= 0) return start;
+  const m = iso.match(/^\d{4}-\d{2}-\d{2}T(\d{2}):(\d{2})/);
+  if (!m) return start;
+  const endTotal = (parseInt(m[1], 10) * 60 + parseInt(m[2], 10) + Math.round(minutes)) % (24 * 60);
+  const eh = String(Math.floor(endTotal / 60)).padStart(2, "0");
+  const em = String(endTotal % 60).padStart(2, "0");
+  return `${start}–${eh}:${em}`;
+}
+
 function formatSwedishDate(dateStr: string | undefined): string {
   if (!dateStr) return "";
   const months = [
@@ -326,10 +338,11 @@ export function AnalysisResults({
       ? ((negativeHours / totalHours) * 100).toFixed(1)
       : negativeExportPercent?.toFixed(1) ?? "0";
 
-  const timingDiscount =
-    realizedPrice && avgPrice
-      ? (((realizedPrice - avgPrice) / avgPrice) * 100).toFixed(1)
-      : produktion.timing_förlust_pct?.toFixed(1) ?? tekniskaMatt.timing_discount_pct?.toFixed(1) ?? null;
+  // Positive = your realized price was LOWER than the period's simple average (a "discount").
+  const timingDiscountPct =
+    realizedPrice != null && avgPrice
+      ? ((avgPrice - realizedPrice) / avgPrice) * 100
+      : produktion.timing_förlust_pct ?? tekniskaMatt.timing_discount_pct ?? null;
 
   // Extract date range info
   const startDate = data.input?.date_range?.start ?? data.input?.date_range?.start_utc?.split("T")[0];
@@ -458,8 +471,8 @@ export function AnalysisResults({
         </Card>
       </div>
 
-      {/* Timing Discount */}
-      {timingDiscount && (
+      {/* Timing discount */}
+      {timingDiscountPct != null && (
         <Card className="border-primary/20 bg-primary/5">
           <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
@@ -467,22 +480,27 @@ export function AnalysisResults({
               <CardTitle className="text-lg">Timing-rabatt</CardTitle>
             </div>
             <CardDescription>
-              Din solexport sammanfaller med lågpristimmar
+              Hur mycket {timingDiscountPct >= 0 ? "lägre" : "högre"} pris du fick jämfört med periodens snittpris –
+              solel produceras mest mitt på dagen, då spotpriset ofta är {timingDiscountPct >= 0 ? "lägre" : "högre"}.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline gap-2">
               <span className="text-3xl font-bold font-mono text-primary">
-                {timingDiscount}%
+                {Math.abs(timingDiscountPct).toFixed(1)}%
               </span>
               <span className="text-muted-foreground">
-                lägre pris än marknadens snitt
+                {timingDiscountPct >= 0 ? "lägre" : "högre"} pris än marknadens snitt
               </span>
             </div>
             <div className="mt-2 text-sm text-muted-foreground">
-              Realiserat pris: {formatOre(realizedPrice)}/kWh vs
-              snitt: {formatOre(avgPrice)}/kWh
+              Realiserat pris {formatOre(realizedPrice)}/kWh vs marknadens snitt {formatOre(avgPrice)}/kWh.
             </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              <span className="text-foreground">Realiserat pris</span> = snittpriset viktat efter när du faktiskt
+              exporterade (totala intäkter ÷ exporterad kWh). <span className="text-foreground">Marknadens snitt</span> =
+              enkelt snittpris över hela perioden, oavsett om du producerade.
+            </p>
           </CardContent>
         </Card>
       )}
@@ -725,7 +743,7 @@ export function AnalysisResults({
                     <tbody className="font-mono">
                       {data.forlust_export.poster.map((row, i) => (
                         <tr key={i} className="border-b border-border/30">
-                          <td className="py-1.5 pr-4 font-sans">{formatLossTime(row.start)}</td>
+                          <td className="py-1.5 pr-4 font-sans">{formatLossRange(row.start, data.forlust_export?.intervall_minuter)}</td>
                           <td className="py-1.5 pr-4 text-right">{formatOre(row.spot_sek_per_kwh)}</td>
                           <td className="py-1.5 pr-4 text-right text-destructive">{formatOre(row.effektivt_pris_sek_per_kwh)}</td>
                           <td className="py-1.5 pr-4 text-right">{formatNumber(row.kwh, 2)} kWh</td>
