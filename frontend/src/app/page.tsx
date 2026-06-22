@@ -583,6 +583,9 @@ export default function Home() {
                         <Input id="grid-pct" inputMode="decimal" value={gridPct} onChange={(e) => setGridPct(e.target.value)} placeholder="t.ex. 5" />
                       </div>
                     </div>
+                    <p className="text-xs text-muted-foreground">
+                      Den rörliga delen är <span className="text-foreground">förlustersättningen</span> – oftast ca 5 % av spotpriset.
+                    </p>
                   </div>
 
                   <div className="space-y-2">
