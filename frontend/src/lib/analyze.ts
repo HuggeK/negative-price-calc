@@ -217,6 +217,7 @@ function analyzeFusePeaks(
   let peakKw = 0;
   let intervalsAtMax = 0;
   let totalIntervals = 0;
+  const dailyPeak = new Map<string, number>(); // date -> peak export power (kW)
 
   for (const p of production) {
     const hours = (p.end - p.start) / MS_PER_HOUR;
@@ -228,7 +229,13 @@ function analyzeFusePeaks(
       intervalsAtMax += 1;
       energyAtMax += p.kwh;
     }
+    const d = dateStr(p.start);
+    if (powerKw > (dailyPeak.get(d) ?? 0)) dailyPeak.set(d, powerKw);
   }
+
+  const serie = [...dailyPeak.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, kw]) => ({ date, peak_kw: round(kw, 2) }));
 
   return {
     sakring_amp: fuseAmps,
@@ -237,6 +244,7 @@ function analyzeFusePeaks(
     intervaller_vid_max: intervalsAtMax,
     andel_tid_vid_max_pct: round(totalIntervals > 0 ? (intervalsAtMax / totalIntervals) * 100 : 0, 1),
     energi_vid_max_kwh: round(energyAtMax, 2),
+    serie,
   };
 }
 

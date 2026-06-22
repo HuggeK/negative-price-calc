@@ -221,6 +221,8 @@ export interface AnalysisResult {
     intervaller_vid_max: number;
     andel_tid_vid_max_pct: number;
     energi_vid_max_kwh: number;
+    /** Daily peak export power (kW), for charting against the fuse limit. */
+    serie: Array<{ date: string; peak_kw: number }>;
   };
   meta: {
     price_granularity: Granularity;

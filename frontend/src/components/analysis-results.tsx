@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { PriceChart } from "./price-chart";
 import { LossChart } from "./loss-chart";
+import { FuseChart } from "./fuse-chart";
 
 interface AnalysisData {
   hero?: {
@@ -133,6 +134,7 @@ interface AnalysisData {
     intervaller_vid_max?: number;
     andel_tid_vid_max_pct?: number;
     energi_vid_max_kwh?: number;
+    serie?: Array<{ date?: string; peak_kw?: number }>;
   };
   forlust_export?: {
     antal?: number;
@@ -288,6 +290,23 @@ function formatSwedishDate(dateStr: string | undefined): string {
   return `${day} ${month} ${year}`;
 }
 
+const TOTAL_EXPORT_INFO = "Summan av all el du matat ut på nätet under perioden (kWh).";
+const TOTAL_REVENUE_INFO =
+  "Värdet av din export till rena spotpriset (SEK), summerat över perioden – före påslag/avgifter och moms.";
+const NEG_QUARTERS_INFO =
+  "Antal kvartar (15 min) då spotpriset var negativt medan du exporterade – då betalar du för att mata ut el.";
+const NEG_COST_INFO =
+  "Vad de negativa kvartarna kostade dig totalt (exporterad energi × det negativa priset).";
+const EXPORT_COMP_INFO =
+  "Vad du faktiskt får betalt för exporten = (spot + förlustersättning [elnät] + påslag/avdrag [elhandel]) × (1 + moms).";
+const FORECAST_INFO =
+  "Förväntad ekonomi per hel månad: effektiv ersättning minus fasta månadsavgifter. Delmånader räknas upp till en hel månad.";
+const SELF_INFO =
+  "Hur mycket du skulle spara på att använda elen själv i stället för att exportera den (sparat inköp = spot + energiskatt + nätavgift, × moms).";
+const LOSS_INFO =
+  "Kvartar då ditt effektiva pris var under noll – du betalade för att exportera. Tabellen visar de värst drabbade tillfällena.";
+const GRID_INFO =
+  "Hur ofta din exporteffekt nådde huvudsäkringens gräns (kapade toppar). Diagrammet visar daglig toppeffekt mot säkringsgränsen.";
 const TIMING_INFO =
   "Hur mycket lägre (eller högre) pris du fick jämfört med marknadens enkla snittpris för perioden. Solel produceras mest mitt på dagen då spotpriset ofta är lägre.";
 const REALIZED_PRICE_INFO =
@@ -477,8 +496,8 @@ export function AnalysisResults({
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total export
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+              Total export <InfoTooltip text={TOTAL_EXPORT_INFO} />
             </CardTitle>
             <Zap className="h-4 w-4 text-primary" />
           </CardHeader>
@@ -491,8 +510,8 @@ export function AnalysisResults({
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total intäkt
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+              Total intäkt <InfoTooltip text={TOTAL_REVENUE_INFO} />
             </CardTitle>
             <Coins className="h-4 w-4 text-primary" />
           </CardHeader>
@@ -505,8 +524,9 @@ export function AnalysisResults({
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {isQuarterHour(productionGranularity) ? "Negativa priskvartar" : "Negativa prisintervall"}
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+              {isQuarterHour(productionGranularity) ? "Negativa priskvartar" : "Negativa prisintervall"}{" "}
+              <InfoTooltip text={NEG_QUARTERS_INFO} />
             </CardTitle>
             <Clock className="h-4 w-4 text-destructive" />
           </CardHeader>
@@ -522,8 +542,8 @@ export function AnalysisResults({
 
         <Card className={negativeCost && negativeCost > 0 ? "border-destructive/50" : ""}>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Kostnad negativa priser
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+              Kostnad negativa priser <InfoTooltip text={NEG_COST_INFO} />
             </CardTitle>
             <AlertTriangle className="h-4 w-4 text-destructive" />
           </CardHeader>
@@ -573,6 +593,7 @@ export function AnalysisResults({
             <div className="flex items-center gap-2">
               <Plug className="h-5 w-5 text-primary" />
               <CardTitle className="text-lg">Nätanslutning</CardTitle>
+              <InfoTooltip text={GRID_INFO} />
             </div>
             <CardDescription>
               Hur ofta din export nådde huvudsäkringens gräns ({formatNumber(data.natanslutning.sakring_amp)} A
@@ -603,6 +624,12 @@ export function AnalysisResults({
                 <p className="text-sm text-muted-foreground">exporterat vid max</p>
               </div>
             </div>
+            {data.natanslutning.serie && data.natanslutning.serie.length > 0 && (
+              <div className="mt-4">
+                <p className="text-sm text-muted-foreground mb-2">Daglig toppeffekt mot säkringsgränsen:</p>
+                <FuseChart serie={data.natanslutning.serie} limitKw={data.natanslutning.sakring_kw} />
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -614,29 +641,30 @@ export function AnalysisResults({
             <div className="flex items-center gap-2">
               <Banknote className="h-5 w-5 text-primary" />
               <CardTitle className="text-lg">Ersättning för exporterad el</CardTitle>
+              <InfoTooltip text={EXPORT_COMP_INFO} />
             </div>
             <CardDescription>
               Vad du faktiskt får betalt per exporterad kWh (inkl. {formatNumber(data.exportersattning.moms_pct, 0)}% moms)
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex items-baseline gap-2">
-              <span
-                className={`text-3xl font-bold font-mono ${
-                  (data.exportersattning.effektivt_pris_sek_per_kwh ?? 0) < 0 ? "text-destructive" : "text-primary"
-                }`}
-              >
-                {formatOre(data.exportersattning.effektivt_pris_sek_per_kwh)}/kWh
-              </span>
-              <span className="text-muted-foreground">effektivt pris</span>
-            </div>
-            {data.exportersattning.brytpunkt_spot_sek_per_kwh !== undefined && (
-              <div className="mt-3 rounded-md border border-border/50 bg-background/60 px-3 py-2 text-sm">
-                Du säljer med förlust när spotpriset går under{" "}
-                <span className="font-mono font-semibold text-foreground">
+            {data.exportersattning.brytpunkt_spot_sek_per_kwh !== undefined ? (
+              <div>
+                <div className="text-sm text-muted-foreground">Du säljer med förlust när spotpriset går under</div>
+                <div className="text-3xl font-bold font-mono text-destructive">
                   {formatOre(data.exportersattning.brytpunkt_spot_sek_per_kwh)}/kWh
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-baseline gap-2">
+                <span
+                  className={`text-3xl font-bold font-mono ${
+                    (data.exportersattning.effektivt_pris_sek_per_kwh ?? 0) < 0 ? "text-destructive" : "text-primary"
+                  }`}
+                >
+                  {formatOre(data.exportersattning.effektivt_pris_sek_per_kwh)}/kWh
                 </span>
-                .
+                <span className="text-muted-foreground">effektivt pris</span>
               </div>
             )}
             <div className="mt-3 space-y-0.5 text-sm text-muted-foreground">
@@ -651,12 +679,18 @@ export function AnalysisResults({
               </div>
               <div>Innan moms: {formatOre(data.exportersattning.pris_innan_moms_sek_per_kwh)}/kWh × (1 + {formatNumber(data.exportersattning.moms_pct, 0)}% moms)</div>
             </div>
-            <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-sm">
-              <span>
-                Effektiv intäkt:{" "}
-                <span className="font-mono font-semibold text-foreground">{formatCurrency(data.exportersattning.effektiv_total_sek)}</span>
+            <div className="mt-3 flex flex-wrap items-baseline gap-x-6 gap-y-1">
+              <span className="text-sm">
+                Totalt beräknad intäkt:{" "}
+                <span className="font-mono font-semibold text-base text-foreground">{formatCurrency(data.exportersattning.effektiv_total_sek)}</span>
               </span>
-              <span className="text-muted-foreground">
+              <span className="text-sm text-muted-foreground">
+                Effektivt pris i snitt:{" "}
+                <span className={`font-mono ${(data.exportersattning.effektivt_pris_sek_per_kwh ?? 0) < 0 ? "text-destructive" : "text-foreground"}`}>
+                  {formatOre(data.exportersattning.effektivt_pris_sek_per_kwh)}/kWh
+                </span>
+              </span>
+              <span className="text-sm text-muted-foreground">
                 ({data.exportersattning.skillnad_mot_spot_sek !== undefined && data.exportersattning.skillnad_mot_spot_sek >= 0 ? "+" : "−"}
                 {formatCurrency(Math.abs(data.exportersattning.skillnad_mot_spot_sek ?? 0))} mot enbart spotpris {formatCurrency(data.exportersattning.spot_total_sek)})
               </span>
@@ -672,6 +706,7 @@ export function AnalysisResults({
             <div className="flex items-center gap-2">
               <CalendarDays className="h-5 w-5 text-primary" />
               <CardTitle className="text-lg">Vad du kan förvänta dig per månad</CardTitle>
+              <InfoTooltip text={FORECAST_INFO} />
             </div>
             <CardDescription>
               Per hel månad (delmånader är uppräknade till full månad) över {formatNumber(data.manads_prognos.antal_manader)} månader
@@ -737,6 +772,7 @@ export function AnalysisResults({
             <div className="flex items-center gap-2">
               <PiggyBank className="h-5 w-5 text-primary" />
               <CardTitle className="text-lg">Värde av självkonsumtion</CardTitle>
+              <InfoTooltip text={SELF_INFO} />
             </div>
             <CardDescription>
               Hur mycket du skulle spara på att använda din produktion själv i stället för att exportera den (inkl. {formatNumber(data.sjalvkonsumtion.moms_pct, 0)}% moms)
@@ -795,6 +831,7 @@ export function AnalysisResults({
               <CardTitle className="text-lg">
                 {data.forlust_export.intervall_minuter === 15 ? "Kvartar" : "Tillfällen"} du exporterade med förlust
               </CardTitle>
+              <InfoTooltip text={LOSS_INFO} />
             </div>
             <CardDescription>
               Tillfällen då ditt effektiva pris var under noll – du betalade för att exportera.
@@ -823,6 +860,13 @@ export function AnalysisResults({
                 </div>
                 <p className="text-sm text-muted-foreground">exporterat med förlust</p>
               </div>
+            </div>
+
+            <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm">
+              {formatNumber(data.forlust_export.antal)} {data.forlust_export.intervall_minuter === 15 ? "kvartar" : "tillfällen"} hade
+              spotpris under brytpunkten ({formatOre(data.forlust_export.troskel_spot_sek_per_kwh)}/kWh). Om du
+              begränsat exporten (inte matat ut) under dessa hade du sluppit{" "}
+              <span className="font-mono font-semibold text-foreground">{formatCurrency(data.forlust_export.total_forlust_sek)}</span> i förlust.
             </div>
 
             <LossChart serie={data.forlust_export.serie} />
