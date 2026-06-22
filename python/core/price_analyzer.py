@@ -349,6 +349,32 @@ class PriceAnalyzer:
             self_spot = realized_spot if self_quarter_price else avg_spot
             value_self = (self_spot + tax + fee) * (1 + vat)
             export_value = _effective(realized_spot)
+
+            # Per-month breakdown on the actual production: saving from self-using vs exporting.
+            df_sc = merged_df.copy()
+            df_sc['interval_hours'] = interval_hours.values
+            sc_months = []
+            for period, grp in df_sc.groupby(df_sc.index.to_period('M')):
+                kwh = float(grp['production_kwh'].sum())
+                if kwh <= 0:
+                    continue
+                m_realized = float(grp['export_value_sek'].sum()) / kwh
+                ih = float(grp['interval_hours'].sum())
+                m_avg = (
+                    float((grp['price_sek_per_kwh'] * grp['interval_hours']).sum() / ih)
+                    if ih > 0 else m_realized
+                )
+                m_self_spot = m_realized if self_quarter_price else m_avg
+                m_value_self = (m_self_spot + tax + fee) * (1 + vat)
+                m_export = _effective(m_realized)
+                sc_months.append({
+                    'period': str(period),
+                    'production_kwh': round(kwh, 1),
+                    'value_self_sek_per_kwh': round(m_value_self, 4),
+                    'export_value_sek_per_kwh': round(m_export, 4),
+                    'saving_sek': round(kwh * (m_value_self - m_export), 2),
+                })
+
             analysis['self_consumption'] = {
                 'vat_pct': round(vat * 100, 1),
                 'quarter_price': self_quarter_price,
@@ -358,6 +384,8 @@ class PriceAnalyzer:
                 'value_self_sek_per_kwh': round(value_self, 4),
                 'export_value_sek_per_kwh': round(export_value, 4),
                 'increment_vs_export_sek_per_kwh': round(value_self - export_value, 4),
+                'months': sc_months,
+                'total_saving_sek': round(sum(x['saving_sek'] for x in sc_months), 2),
             }
 
         # Quarters exported at a loss: effective export price below zero while exporting.

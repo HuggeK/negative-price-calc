@@ -168,6 +168,8 @@ def test_self_consumption_quarter_price_toggle():
     assert on["quarter_price"] is True
     assert on["spot_sek_per_kwh"] == pytest.approx(1.5)  # realized
     assert on["value_self_sek_per_kwh"] == pytest.approx(3.125)
+    assert len(on["months"]) == 1
+    assert on["total_saving_sek"] == pytest.approx(5.0)  # 4 kWh × (3.125 − 1.875)
 
     off = PriceAnalyzer.analyze_data(
         merged, vat_rate=25, self_energy_tax=0.4, self_grid_fee=0.6, self_quarter_price=False
@@ -176,6 +178,7 @@ def test_self_consumption_quarter_price_toggle():
     assert off["spot_sek_per_kwh"] == pytest.approx(2.0)  # period average
     assert off["value_self_sek_per_kwh"] == pytest.approx(3.75)
     assert off["export_value_sek_per_kwh"] == pytest.approx(1.875)  # export realized at 1.5
+    assert off["total_saving_sek"] == pytest.approx(7.5)  # 4 kWh × (3.75 − 1.875)
 
 
 def test_export_at_loss_quarters():

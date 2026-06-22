@@ -146,6 +146,15 @@ export interface AnalysisResult {
     varde_self_sek_per_kwh: number;
     export_varde_sek_per_kwh: number;
     okning_vs_export_sek_per_kwh: number;
+    /** Per-month saving from self-consuming vs exporting, on the actual production. */
+    manader: Array<{
+      period: string;
+      production_kwh: number;
+      varde_self_sek_per_kwh: number;
+      export_varde_sek_per_kwh: number;
+      besparing_sek: number;
+    }>;
+    total_besparing_sek: number;
   };
   /**
    * Quarters exported "at a loss": the effective export price (after offsets + VAT) was

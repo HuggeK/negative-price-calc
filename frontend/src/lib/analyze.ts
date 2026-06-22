@@ -140,6 +140,7 @@ function analyzeExportCompensation(
 function analyzeSelfConsumption(
   realizedSpot: number,
   avgSpot: number,
+  months: Map<string, MonthAcc>,
   opts: AnalyzeOptions
 ): NonNullable<AnalysisResult["sjalvkonsumtion"]> {
   const vat = normalizeVat(opts.vatRate);
@@ -152,6 +153,27 @@ function analyzeSelfConsumption(
   const valueSelf = (selfSpot + tax + fee) * (1 + vat);
   // Export is always realized at the quarter you export (production-weighted spot).
   const exportValue = effectiveExportPrice(realizedSpot, opts);
+
+  // Per-month breakdown on the actual production: how much you'd save by using the energy
+  // yourself instead of exporting it = production × (value_self − export_value), per month.
+  const manader = [...months.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([period, m]) => {
+      const mRealized = m.production_kwh > 0 ? m.revenue_sek / m.production_kwh : 0;
+      const mAvg = m.hours > 0 ? m.priceTimesHours / m.hours : 0;
+      const mSelfSpot = quarter ? mRealized : mAvg;
+      const mValueSelf = (mSelfSpot + tax + fee) * (1 + vat);
+      const mExportValue = effectiveExportPrice(mRealized, opts);
+      return {
+        period,
+        production_kwh: round(m.production_kwh, 1),
+        varde_self_sek_per_kwh: round(mValueSelf, 4),
+        export_varde_sek_per_kwh: round(mExportValue, 4),
+        besparing_sek: round(m.production_kwh * (mValueSelf - mExportValue), 2),
+      };
+    });
+  const totalBesparing = manader.reduce((s, x) => s + x.besparing_sek, 0);
+
   return {
     moms_pct: round(vat * 100, 1),
     kvartpris: quarter,
@@ -161,6 +183,8 @@ function analyzeSelfConsumption(
     varde_self_sek_per_kwh: round(valueSelf, 4),
     export_varde_sek_per_kwh: round(exportValue, 4),
     okning_vs_export_sek_per_kwh: round(valueSelf - exportValue, 4),
+    manader,
+    total_besparing_sek: round(totalBesparing, 2),
   };
 }
 
@@ -493,7 +517,7 @@ export function analyze(
   const hasSelfInputs = opts.selfEnergyTax != null || opts.selfGridFee != null;
   const sjalvkonsumtion =
     hasSelfInputs && totalMatchedKwh > 0
-      ? analyzeSelfConsumption(realizedPrice, avgPrice, opts)
+      ? analyzeSelfConsumption(realizedPrice, avgPrice, months, opts)
       : undefined;
 
   return {

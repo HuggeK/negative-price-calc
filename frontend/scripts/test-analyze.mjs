@@ -146,6 +146,9 @@ console.log("Test 5: export compensation + self-consumption");
   approx(s.varde_self_sek_per_kwh, 3.125, "self: value (spot+tax+fee)*1.25");
   approx(s.export_varde_sek_per_kwh, 2.25, "self: export reference price");
   approx(s.okning_vs_export_sek_per_kwh, 0.875, "self: increment vs export");
+  eq(s.manader.length, 1, "self: one month in breakdown");
+  approx(s.total_besparing_sek, 3.5, "self: total saving (4 kWh * 0.875)");
+  approx(s.manader[0].besparing_sek, 3.5, "self: month saving");
 }
 
 // --- Test 5b: blocks are omitted when their inputs are absent ---

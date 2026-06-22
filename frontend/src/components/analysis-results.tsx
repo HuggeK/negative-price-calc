@@ -174,6 +174,14 @@ interface AnalysisData {
     varde_self_sek_per_kwh?: number;
     export_varde_sek_per_kwh?: number;
     okning_vs_export_sek_per_kwh?: number;
+    manader?: Array<{
+      period?: string;
+      production_kwh?: number;
+      varde_self_sek_per_kwh?: number;
+      export_varde_sek_per_kwh?: number;
+      besparing_sek?: number;
+    }>;
+    total_besparing_sek?: number;
   };
   meta?: {
     price_granularity?: string;
@@ -695,7 +703,7 @@ export function AnalysisResults({
         </Card>
       )}
 
-      {/* Self-consumption valuation (separate, optional) */}
+      {/* Self-consumption valuation (separate, optional) — per-month savings breakdown */}
       {data.sjalvkonsumtion && (
         <Card>
           <CardHeader className="pb-2">
@@ -704,23 +712,49 @@ export function AnalysisResults({
               <CardTitle className="text-lg">Värde av självkonsumtion</CardTitle>
             </div>
             <CardDescription>
-              Vad en kWh är värd om du använder den själv i stället för att exportera den (inkl. {formatNumber(data.sjalvkonsumtion.moms_pct, 0)}% moms)
+              Hur mycket du skulle spara på att använda din produktion själv i stället för att exportera den (inkl. {formatNumber(data.sjalvkonsumtion.moms_pct, 0)}% moms)
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline gap-2">
               <span className="text-3xl font-bold font-mono text-primary">
-                {formatOre(data.sjalvkonsumtion.varde_self_sek_per_kwh)}/kWh
+                {formatCurrency(data.sjalvkonsumtion.total_besparing_sek)}
               </span>
-              <span className="text-muted-foreground">vid självkonsumtion</span>
+              <span className="text-muted-foreground">möjlig besparing om all produktion används själv</span>
             </div>
             <div className="mt-2 text-sm text-muted-foreground">
-              {formatOreSigned(data.sjalvkonsumtion.okning_vs_export_sek_per_kwh)}/kWh jämfört med att exportera
-              ({formatOre(data.sjalvkonsumtion.export_varde_sek_per_kwh)}/kWh). Bygger på spot{" "}
-              {formatOre(data.sjalvkonsumtion.spot_sek_per_kwh)} + energiskatt {formatOre(data.sjalvkonsumtion.energiskatt_sek_per_kwh)} + nätavgift{" "}
-              {formatOre(data.sjalvkonsumtion.natavgift_sek_per_kwh)}. Spotpris enligt{" "}
+              {formatOreSigned(data.sjalvkonsumtion.okning_vs_export_sek_per_kwh)}/kWh mer värt än att exportera. Bygger på spot
+              {" "}+ energiskatt {formatOre(data.sjalvkonsumtion.energiskatt_sek_per_kwh)} + nätavgift{" "}
+              {formatOre(data.sjalvkonsumtion.natavgift_sek_per_kwh)}, spotpris enligt{" "}
               {data.sjalvkonsumtion.kvartpris ? "kvartspris" : "periodens snittspris"}.
             </div>
+
+            {data.sjalvkonsumtion.manader && data.sjalvkonsumtion.manader.length > 0 && (
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border/50 text-left text-muted-foreground">
+                      <th className="py-2 pr-4 font-medium">Månad</th>
+                      <th className="py-2 pr-4 font-medium text-right">Produktion</th>
+                      <th className="py-2 pr-4 font-medium text-right">Värde självkons.</th>
+                      <th className="py-2 pr-4 font-medium text-right">Värde export</th>
+                      <th className="py-2 font-medium text-right">Besparing</th>
+                    </tr>
+                  </thead>
+                  <tbody className="font-mono">
+                    {data.sjalvkonsumtion.manader.map((m, i) => (
+                      <tr key={i} className="border-b border-border/30">
+                        <td className="py-1.5 pr-4 font-sans">{formatMonth(m.period)}</td>
+                        <td className="py-1.5 pr-4 text-right">{formatNumber(m.production_kwh, 0)} kWh</td>
+                        <td className="py-1.5 pr-4 text-right">{formatOre(m.varde_self_sek_per_kwh)}/kWh</td>
+                        <td className="py-1.5 pr-4 text-right">{formatOre(m.export_varde_sek_per_kwh)}/kWh</td>
+                        <td className="py-1.5 text-right text-primary">{formatCurrency(m.besparing_sek)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
