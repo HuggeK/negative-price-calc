@@ -1,0 +1,127 @@
+"""Tests for interval-aware (15-minute / hourly / daily) price-production analysis.
+
+These lock in the behaviour added when the Swedish market moved to 15-minute
+resolution: production and prices may have different cadences, and "hours" metrics
+must reflect real durations rather than row counts.
+"""
+
+import pandas as pd
+import pytest
+
+from core.price_analyzer import PriceAnalyzer
+from core.intervals import infer_step_hours, interval_hours_series
+
+
+def test_infer_step_hours_hourly_and_quarterly():
+    hourly = pd.date_range("2025-01-01", periods=10, freq="h")
+    quarterly = pd.date_range("2025-01-01", periods=10, freq="15min")
+    assert infer_step_hours(hourly) == pytest.approx(1.0)
+    assert infer_step_hours(quarterly) == pytest.approx(0.25)
+    assert infer_step_hours(hourly[:1]) == pytest.approx(1.0)  # single row -> default
+
+
+def test_interval_hours_series_sums_to_span():
+    idx = pd.date_range("2025-01-01", periods=4, freq="15min")
+    hours = interval_hours_series(idx)
+    assert hours.sum() == pytest.approx(1.0)  # 4 x 15 min == 1 hour
+
+
+def test_hourly_x_hourly_matches_simple_multiplication():
+    idx = pd.date_range("2025-01-01 00:00", periods=2, freq="h")
+    prices = pd.DataFrame({"price_eur_per_mwh": [100.0, -50.0]}, index=idx)
+    production = pd.DataFrame({"production_kwh": [2.0, 3.0]}, index=idx)
+
+    merged = PriceAnalyzer.merge_data(prices, production, eur_sek_rate=10.0)
+    a = PriceAnalyzer.analyze_data(merged)
+
+    # sek/kwh = eur_mwh * 10 / 1000 -> [1.0, -0.5]
+    assert a["total_hours"] == pytest.approx(2.0)
+    assert a["production_total"] == pytest.approx(5.0)
+    assert a["total_export_value_sek"] == pytest.approx(2 * 1.0 + 3 * -0.5)  # 0.5
+    assert a["negative_price_hours"] == pytest.approx(1.0)
+    assert a["hours_with_production"] == pytest.approx(2.0)
+    assert a["negative_export_cost_abs_sek"] == pytest.approx(1.5)
+
+
+def test_hourly_production_x_15min_prices_surfaces_negative_quarter():
+    # Hourly production, but prices at 15-minute resolution with one negative quarter.
+    prod_idx = pd.date_range("2025-11-03 00:00", periods=2, freq="h")
+    production = pd.DataFrame({"production_kwh": [4.0, 8.0]}, index=prod_idx)
+
+    price_idx = pd.date_range("2025-11-03 00:00", periods=8, freq="15min")
+    # First hour has a negative third quarter; second hour all positive.
+    eur = [100, 100, -200, 100, 100, 100, 100, 100]
+    prices = pd.DataFrame({"price_eur_per_mwh": [float(x) for x in eur]}, index=price_idx)
+
+    merged = PriceAnalyzer.merge_data(prices, production, eur_sek_rate=10.0)
+    a = PriceAnalyzer.analyze_data(merged)
+
+    # Production is split evenly across the 4 quarters of each hour: [1,1,1,1, 2,2,2,2].
+    assert a["production_total"] == pytest.approx(12.0)
+    assert a["total_hours"] == pytest.approx(2.0)
+    # Revenue: 1*1 + 1*1 + 1*(-2) + 1*1 + 2*1*4 = 1 + 8 = 9
+    assert a["total_export_value_sek"] == pytest.approx(9.0)
+    # Exactly one negative 15-min quarter, carrying 1 kWh.
+    assert a["negative_price_hours"] == pytest.approx(0.25)
+    assert a["production_during_negative_prices"] == pytest.approx(1.0)
+    assert a["negative_export_cost_abs_sek"] == pytest.approx(2.0)
+
+
+def test_15min_production_x_hourly_prices_no_row_loss():
+    # 15-minute production, hourly prices (older dates). No production interval dropped.
+    prod_idx = pd.date_range("2024-06-01 00:00", periods=8, freq="15min")
+    production = pd.DataFrame({"production_kwh": [1.0] * 8}, index=prod_idx)
+
+    price_idx = pd.date_range("2024-06-01 00:00", periods=2, freq="h")
+    prices = pd.DataFrame({"price_eur_per_mwh": [100.0, -100.0]}, index=price_idx)
+
+    merged = PriceAnalyzer.merge_data(prices, production, eur_sek_rate=10.0)
+    a = PriceAnalyzer.analyze_data(merged)
+
+    assert len(merged) == 8  # all 15-min production rows kept
+    assert a["total_hours"] == pytest.approx(2.0)
+    assert a["production_total"] == pytest.approx(8.0)
+    # First hour price +1 sek/kwh (4 kWh), second hour -1 sek/kwh (4 kWh) -> 0 net
+    assert a["total_export_value_sek"] == pytest.approx(0.0)
+    assert a["negative_price_hours"] == pytest.approx(1.0)  # second hour
+    assert a["production_during_negative_prices"] == pytest.approx(4.0)
+
+
+def test_fuse_flat_peak_analysis():
+    # Hour 1: 12 kWh -> 12 kW (above 16 A limit ~11.1 kW). Hour 2: 5 kWh -> below.
+    idx = pd.date_range("2025-07-01 12:00", periods=2, freq="h")
+    prices = pd.DataFrame({"price_eur_per_mwh": [100.0, 100.0]}, index=idx)
+    production = pd.DataFrame({"production_kwh": [12.0, 5.0]}, index=idx)
+
+    merged = PriceAnalyzer.merge_data(prices, production, eur_sek_rate=10.0)
+    a = PriceAnalyzer.analyze_data(merged, fuse_amps=16)
+
+    gc = a["grid_connection"]
+    assert gc["fuse_limit_kw"] == pytest.approx((3 ** 0.5) * 400 * 16 / 1000, abs=0.01)  # ~11.08
+    assert gc["peak_power_kw"] == pytest.approx(12.0)
+    assert gc["hours_at_max"] == pytest.approx(1.0)
+    assert gc["peaks"] == 1
+    assert gc["share_time_at_max_pct"] == pytest.approx(50.0)
+
+
+def test_no_fuse_means_no_grid_connection_block():
+    idx = pd.date_range("2025-07-01", periods=2, freq="h")
+    prices = pd.DataFrame({"price_eur_per_mwh": [100.0, 100.0]}, index=idx)
+    production = pd.DataFrame({"production_kwh": [1.0, 1.0]}, index=idx)
+    merged = PriceAnalyzer.merge_data(prices, production)
+    assert "grid_connection" not in PriceAnalyzer.analyze_data(merged)
+
+
+def test_db_has_data_for_period_is_resolution_aware(tmp_path):
+    from core.db_manager import PriceDatabaseManager
+
+    db = PriceDatabaseManager(str(tmp_path / "p.db"))
+    idx = pd.date_range("2025-11-01 00:00", periods=96, freq="15min")  # one full day
+    df = pd.DataFrame({"price_eur_per_mwh": [10.0] * 96}, index=idx)
+    db.store_price_data(df, "SE3")
+
+    start = pd.Timestamp("2025-11-01 00:00")
+    end = pd.Timestamp("2025-11-01 23:45")
+    # 96 quarter-hour points cover the day; the hourly-only heuristic would also pass,
+    # but this confirms 15-min density is accepted as complete.
+    assert db.has_data_for_period("SE3", start, end) is True

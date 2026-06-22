@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { Zap } from "lucide-react";
 
 export function Header() {

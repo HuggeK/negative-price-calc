@@ -18,6 +18,7 @@ import { Mail, Loader2, Shield } from "lucide-react";
 interface EmailCaptureProps {
   onEmailSubmitted: () => void;
   isAnalyzing: boolean;
+  aiEnabled?: boolean;
 }
 
 const FORMSPARK_FORM_ID = "ExsKPPKKy";
@@ -28,7 +29,7 @@ function isValidEmail(email: string): boolean {
   return emailRegex.test(email);
 }
 
-export function EmailCapture({ onEmailSubmitted, isAnalyzing }: EmailCaptureProps) {
+export function EmailCapture({ onEmailSubmitted, isAnalyzing, aiEnabled = true }: EmailCaptureProps) {
   const [email, setEmail] = useState("");
   const [acceptMarketing, setAcceptMarketing] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -135,7 +136,7 @@ export function EmailCapture({ onEmailSubmitted, isAnalyzing }: EmailCaptureProp
                 {isAnalyzing ? "Analyserar..." : "Skickar..."}
               </>
             ) : (
-              "Analysera med AI-sammanfattning"
+              aiEnabled ? "Analysera med AI-sammanfattning" : "Analysera"
             )}
           </Button>
 

@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useCallback, useRef, useEffect } from "react";
 import {
   Select,
   SelectContent,
@@ -10,13 +9,21 @@ import {
   SelectValue,
   Label,
   Button,
+  Input,
+  Switch,
 } from "@sourceful-energy/ui";
 import { toast } from "sonner";
-import { X } from "lucide-react";
+import { X, Sparkles } from "lucide-react";
 import { Header } from "@/components/header";
 import { FileUpload } from "@/components/file-upload";
 import { EmailCapture } from "@/components/email-capture";
 import { StreamingTerminal, LogEntry } from "@/components/streaming-terminal";
+import { AnalysisResults } from "@/components/analysis-results";
+import { parseProductionCsv } from "@/lib/parseProduction";
+import { fetchPrices } from "@/lib/prices";
+import { analyze } from "@/lib/analyze";
+import { generateAiSummary } from "@/lib/aiSummary";
+import type { AnalysisResult } from "@/lib/types";
 
 const AREA_CODES = {
   SE_1: "Norra Sverige (Luleå)",
@@ -25,32 +32,51 @@ const AREA_CODES = {
   SE_4: "Södra Sverige (Malmö)",
 };
 
-// API routes are proxied through Next.js - no CORS issues
+const FUSE_SIZES = ["16", "20", "25", "35", "50", "63"];
+const AI_KEY_STORAGE = "openrouter_key";
 
-interface AnalysisResponse {
-  success: boolean;
-  analysis: Record<string, unknown>;
-  metadata: {
-    filename: string;
-    granularity: string;
-    area: string;
-    currency: string;
-    analyzed_at: string;
-    ai_enabled: boolean;
-  };
-  result_id?: string;
-  error?: string;
+const GRANULARITY_LABEL: Record<string, string> = {
+  "15min": "15-minutersdata",
+  hourly: "timdata",
+  daily: "dygnsdata",
+  unknown: "okänd upplösning",
+};
+
+/** Parse a numeric text field; empty -> undefined so the engine treats it as "not set". */
+function numOrUndef(s: string): number | undefined {
+  const t = s.trim().replace(",", ".");
+  if (t === "") return undefined;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : undefined;
 }
 
 export default function Home() {
-  const router = useRouter();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedArea, setSelectedArea] = useState("SE_4");
+  const [fuseAmps, setFuseAmps] = useState(""); // "" = Vet ej / skip
+  const [vatRate, setVatRate] = useState("25");
+  const [energyTax, setEnergyTax] = useState("");
+  const [gridFee, setGridFee] = useState("");
+  const [aiInsights, setAiInsights] = useState(true);
+  const [aiKey, setAiKey] = useState("");
+
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [showTerminal, setShowTerminal] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Restore the (device-local) OpenRouter key.
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(AI_KEY_STORAGE);
+      if (saved) setAiKey(saved);
+    } catch {
+      /* storage unavailable */
+    }
+  }, []);
 
   const addLog = useCallback((type: LogEntry["type"], message: string) => {
     const timestamp = new Date().toLocaleTimeString("sv-SE", {
@@ -69,69 +95,97 @@ export default function Home() {
 
     setIsAnalyzing(true);
     setShowTerminal(true);
+    setResult(null);
+    setAiSummary(null);
     setLogs([]);
     setHasError(false);
 
-    // Abort any previous request
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
+    if (abortControllerRef.current) abortControllerRef.current.abort();
     abortControllerRef.current = new AbortController();
+    const { signal } = abortControllerRef.current;
 
     try {
-      const formData = new FormData();
-      formData.append("production_file", selectedFile);
-      formData.append("area", selectedArea);
+      addLog("info", `Läser in ${selectedFile.name}...`);
+      const text = await selectedFile.text();
 
-      addLog("info", `Startar analys av ${selectedFile.name}...`);
+      addLog("info", "Tolkar produktionsdata...");
+      const parsed = parseProductionCsv(text, selectedFile.name);
+      addLog(
+        "success",
+        `Tolkade ${parsed.rows.length} rader (${GRANULARITY_LABEL[parsed.granularity] ?? parsed.granularity}) ` +
+          `– kolumner "${parsed.datetimeColumn}" / "${parsed.productionColumn}".`
+      );
 
-      const response = await fetch("/api/analyze/stream", {
-        method: "POST",
-        body: formData,
-        signal: abortControllerRef.current.signal,
+      const startMs = parsed.rows[0].start;
+      const endMs = parsed.rows[parsed.rows.length - 1].end;
+      const startStr = new Date(startMs).toISOString().slice(0, 10);
+      const endStr = new Date(endMs).toISOString().slice(0, 10);
+      addLog("info", `Hämtar spotpriser för ${selectedArea} (${startStr} → ${endStr})...`);
+
+      let lastPct = -1;
+      const priceData = await fetchPrices(selectedArea, startMs, endMs, {
+        signal,
+        onProgress: ({ done, total }) => {
+          const pct = Math.floor((done / total) * 100);
+          if (pct >= lastPct + 20 || done === total) {
+            lastPct = pct;
+            addLog("info", `Prishämtning ${pct}% (${done}/${total} dagar)`);
+          }
+        },
       });
 
-      if (!response.ok) {
-        throw new Error("Kunde inte starta analysen");
+      if (priceData.intervals.length === 0) {
+        throw new Error(
+          "Inga spotpriser hittades för perioden. elprisetjustnu.se har data från ca okt 2022 och framåt."
+        );
       }
+      addLog(
+        "success",
+        `Hämtade ${priceData.intervals.length} prispunkter (${GRANULARITY_LABEL[priceData.granularity] ?? priceData.granularity}).`
+      );
 
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error("Streaming stöds inte");
+      addLog("info", "Beräknar analys (intervallmedveten)...");
+      const analysis = analyze(parsed.rows, priceData.intervals, {
+        productionGranularity: parsed.granularity,
+        priceGranularity: priceData.granularity,
+        fuseAmps: fuseAmps ? Number(fuseAmps) : undefined,
+        vatRate: numOrUndef(vatRate),
+        energyTax: numOrUndef(energyTax),
+        transmissionFee: numOrUndef(gridFee),
+      });
+
+      if (analysis.meta.matched_kwh_pct < 99.5) {
+        addLog(
+          "warning",
+          `Endast ${analysis.meta.matched_kwh_pct}% av din produktion kunde matchas mot priser (saknad pristäckning för delar av perioden).`
+        );
       }
+      if (analysis.natanslutning) {
+        addLog(
+          "info",
+          `Nätanslutning: ${analysis.natanslutning.timmar_vid_max} h vid max (säkring ${fuseAmps}A ≈ ${analysis.natanslutning.sakring_kw} kW).`
+        );
+      }
+      setResult(analysis);
+      addLog("success", "Analys klar!");
 
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            try {
-              const data = JSON.parse(line.slice(6));
-
-              if (data.type === "result") {
-                // Redirect to permalink
-                const resultId = data.data?.result_id;
-                if (resultId) {
-                  addLog("success", "Omdirigerar till resultat...");
-                  router.push(`/r/${resultId}`);
-                }
-              } else if (data.type === "error") {
-                addLog("error", data.message);
-                setHasError(true);
-              } else {
-                addLog(data.type, data.message);
-              }
-            } catch {
-              // Ignore parse errors
-            }
+      // Optional in-browser AI summary (uses the user's own OpenRouter key).
+      if (aiInsights) {
+        if (!aiKey.trim()) {
+          addLog("warning", "AI-sammanfattning på, men ingen OpenRouter-nyckel angiven – hoppar över.");
+        } else {
+          addLog("ai", "Genererar AI-sammanfattning...");
+          try {
+            const summary = await generateAiSummary(analysis, {
+              apiKey: aiKey.trim(),
+              area: selectedArea,
+              signal,
+            });
+            setAiSummary(summary);
+            addLog("success", "AI-sammanfattning klar.");
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : "AI-sammanfattning misslyckades.";
+            addLog("warning", msg);
           }
         }
       }
@@ -146,39 +200,68 @@ export default function Home() {
     } finally {
       setIsAnalyzing(false);
     }
-  }, [selectedFile, selectedArea, addLog, router]);
+  }, [selectedFile, selectedArea, fuseAmps, vatRate, energyTax, gridFee, aiInsights, aiKey, addLog]);
 
-  const handleCancel = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
+  const handleReset = useCallback(() => {
+    if (abortControllerRef.current) abortControllerRef.current.abort();
     setShowTerminal(false);
     setIsAnalyzing(false);
+    setResult(null);
+    setAiSummary(null);
     setLogs([]);
     setHasError(false);
   }, []);
+
+  const handleDownloadJson = useCallback(() => {
+    if (!result) return;
+    const payload = aiSummary ? { ...result, ai_explanation_sv: aiSummary } : result;
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    triggerDownload(blob, `prisanalys_${selectedArea}.json`);
+  }, [result, aiSummary, selectedArea]);
+
+  const handleDownloadCsv = useCallback(() => {
+    if (!result) return;
+    const header = "period;production_kwh;revenue_sek;avg_price_sek_per_kwh;negative_hours;negative_kwh;negative_value_sek";
+    const lines = result.aggregates.monthly.map((m) =>
+      [m.period, m.production_kwh, m.revenue_sek, m.avg_price_sek_per_kwh, m.negative_hours, m.negative_kwh, m.negative_value_sek].join(";")
+    );
+    const blob = new Blob([[header, ...lines].join("\n")], { type: "text/csv;charset=utf-8" });
+    triggerDownload(blob, `prisanalys_${selectedArea}.csv`);
+  }, [result, selectedArea]);
 
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
 
       <main className="flex-1 container mx-auto px-4 py-8">
-        {showTerminal ? (
-          // Analyze mode - show terminal prominently
+        {result ? (
+          <div className="max-w-5xl mx-auto space-y-6">
+            <div className="flex justify-end">
+              <Button variant="outline" size="sm" onClick={handleReset}>
+                <X className="h-4 w-4 mr-2" />
+                Ny analys
+              </Button>
+            </div>
+            <AnalysisResults
+              data={aiSummary ? { ...result, ai_explanation_sv: aiSummary } : result}
+              metadata={{
+                filename: selectedFile?.name ?? "",
+                area: selectedArea,
+                currency: "SEK",
+                granularity: result.input.granularity,
+              }}
+              onDownloadXlsx={handleDownloadCsv}
+              onDownloadJson={handleDownloadJson}
+            />
+          </div>
+        ) : showTerminal ? (
           <div className="max-w-3xl mx-auto space-y-6">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-xl font-semibold">Analyserar {selectedFile?.name}</h2>
-                <p className="text-sm text-muted-foreground">
-                  Elområde: {selectedArea}
-                </p>
+                <p className="text-sm text-muted-foreground">Elområde: {selectedArea}</p>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleCancel}
-                disabled={!isAnalyzing && !hasError}
-              >
+              <Button variant="outline" size="sm" onClick={handleReset} disabled={!isAnalyzing && !hasError}>
                 <X className="h-4 w-4 mr-2" />
                 {hasError ? "Stäng" : "Avbryt"}
               </Button>
@@ -188,33 +271,27 @@ export default function Home() {
 
             {hasError && (
               <div className="text-center">
-                <Button variant="outline" onClick={handleCancel}>
+                <Button variant="outline" onClick={handleReset}>
                   Försök igen
                 </Button>
               </div>
             )}
           </div>
         ) : (
-          // Upload mode - show hero and form
           <div className="max-w-2xl mx-auto space-y-8">
-            {/* Hero Section */}
             <div className="text-center space-y-4">
               <h1 className="text-4xl font-bold tracking-tight">
                 <span className="text-foreground">Negativa </span>
                 <span className="text-primary">Prisanalyseraren</span>
               </h1>
               <p className="text-lg text-muted-foreground max-w-xl mx-auto">
-                Upptäck hur negativa elpriser påverkar din solexport och få
-                AI-drivna insikter för att optimera din energistrategi.
+                Upptäck hur negativa elpriser påverkar din solexport. Allt körs i din
+                webbläsare – din fil lämnar aldrig din dator.
               </p>
             </div>
 
-            {/* Upload Form */}
             <div className="space-y-6">
-              <FileUpload
-                selectedFile={selectedFile}
-                onFileSelect={setSelectedFile}
-              />
+              <FileUpload selectedFile={selectedFile} onFileSelect={setSelectedFile} />
 
               <div className="space-y-2">
                 <Label>Svenskt elområde</Label>
@@ -232,26 +309,102 @@ export default function Home() {
                 </Select>
               </div>
 
+              {/* Grid connection + payment/VAT settings */}
+              <div className="rounded-lg border border-border/50 bg-muted/30 p-4 space-y-4">
+                <h3 className="text-sm font-semibold text-foreground">Inställningar</h3>
+
+                <div className="space-y-2">
+                  <Label>Huvudsäkring (A)</Label>
+                  <Select value={fuseAmps} onValueChange={setFuseAmps}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Vet ej / hoppa över" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {FUSE_SIZES.map((a) => (
+                        <SelectItem key={a} value={a}>
+                          {a} A (≈ {Math.round((Math.sqrt(3) * 400 * Number(a)) / 100) / 10} kW)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Används för att räkna ut hur ofta din nätanslutning var maxad (3-fas, 400 V).
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="vat">Moms (%)</Label>
+                    <Input id="vat" inputMode="decimal" value={vatRate} onChange={(e) => setVatRate(e.target.value)} placeholder="25" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="tax">Energiskatt (kr/kWh)</Label>
+                    <Input id="tax" inputMode="decimal" value={energyTax} onChange={(e) => setEnergyTax(e.target.value)} placeholder="t.ex. 0,4282" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="fee">Nätavgift (kr/kWh)</Label>
+                    <Input id="fee" inputMode="decimal" value={gridFee} onChange={(e) => setGridFee(e.target.value)} placeholder="t.ex. 0,25" />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Anges för att värdera självkonsumtion: värde = (spotpris + energiskatt + nätavgift) × (1 + moms). Lämna tomt för att hoppa över.
+                </p>
+              </div>
+
+              {/* AI summarization toggle */}
+              <div className="rounded-lg border border-border/50 bg-muted/30 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5 pr-4">
+                    <Label htmlFor="ai-insights" className="flex items-center gap-2 cursor-pointer">
+                      <Sparkles className="h-4 w-4 text-primary" />
+                      AI-sammanfattning
+                    </Label>
+                    <p className="text-sm text-muted-foreground">
+                      Få en AI-genererad sammanfattning på svenska. Körs i din webbläsare med din egen OpenRouter-nyckel.
+                    </p>
+                  </div>
+                  <Switch id="ai-insights" checked={aiInsights} onCheckedChange={setAiInsights} disabled={isAnalyzing} />
+                </div>
+                {aiInsights && (
+                  <div className="space-y-2">
+                    <Label htmlFor="ai-key">OpenRouter API-nyckel</Label>
+                    <Input
+                      id="ai-key"
+                      type="password"
+                      value={aiKey}
+                      placeholder="sk-or-v1-..."
+                      onChange={(e) => {
+                        setAiKey(e.target.value);
+                        try {
+                          localStorage.setItem(AI_KEY_STORAGE, e.target.value);
+                        } catch {
+                          /* ignore */
+                        }
+                      }}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Nyckeln sparas bara lokalt i din webbläsare och skickas enbart till OpenRouter.
+                    </p>
+                  </div>
+                )}
+              </div>
+
               {selectedFile && (
-                <EmailCapture
-                  onEmailSubmitted={handleAnalyze}
-                  isAnalyzing={isAnalyzing}
-                />
+                <EmailCapture onEmailSubmitted={handleAnalyze} isAnalyzing={isAnalyzing} aiEnabled={aiInsights} />
               )}
             </div>
 
-            {/* Info Section */}
             <div className="rounded-lg border border-border/50 bg-muted/30 p-6 space-y-4">
               <h3 className="font-semibold text-foreground">Så här fungerar det</h3>
               <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
                 <li>
-                  <span className="text-foreground">Hämta din exportdata</span> – Logga in på Mina Sidor hos ditt nätbolag eller elbolag och exportera din mätardata (ofta CSV eller Excel).
+                  <span className="text-foreground">Hämta din exportdata</span> – Logga in på Mina Sidor hos ditt nätbolag eller elbolag och exportera din mätardata som CSV.
                 </li>
                 <li>
-                  <span className="text-foreground">Ladda upp filen</span> – Välj filen ovan. Verktyget försöker automatiskt tolka formatet.
+                  <span className="text-foreground">Ladda upp filen</span> – Välj filen ovan. Verktyget tolkar tim-, 15-minuters- och dygnsdata automatiskt.
                 </li>
                 <li>
-                  <span className="text-foreground">Få din analys</span> – Vi matchar din export med historiska spotpriser och räknar ut vad din solel var värd.
+                  <span className="text-foreground">Få din analys</span> – Vi matchar din export mot historiska spotpriser (15-minuters­upplösning från 1 oktober 2025) och räknar ut vad din solel var värd.
                 </li>
               </ol>
 
@@ -261,11 +414,10 @@ export default function Home() {
                   Nu är det spotpriset som avgör vad din export är värd – och vid negativa priser kan du till och med förlora pengar på att exportera.
                 </p>
                 <p>
-                  <strong className="text-foreground">Krav på data:</strong> Filen måste innehålla en kolumn med datum/tid och en kolumn med exporterad energi i kWh.
-                  Bäst resultat med timdata eller 15-minutersdata.
+                  <strong className="text-foreground">Krav på data:</strong> En kolumn med datum/tid och en kolumn med exporterad energi i kWh. Bäst resultat med tim- eller 15-minutersdata. (Excel: exportera som CSV.)
                 </p>
                 <p className="text-xs italic">
-                  Verktyget gör sitt bästa för att tolka olika filformat, men vi tar inget ansvar för analysens exakthet.
+                  Priser från elprisetjustnu.se. Verktyget gör sitt bästa för att tolka olika filformat, men vi tar inget ansvar för analysens exakthet.
                 </p>
               </div>
             </div>
@@ -273,26 +425,35 @@ export default function Home() {
         )}
       </main>
 
-      {/* Footer */}
       <footer className="border-t border-border/40 py-6">
         <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
           <p>
-            Made with{" "}
-            <span className="text-destructive">♥</span> in Kalmar, Sweden
+            Made with <span className="text-destructive">♥</span> in Kalmar, Sweden
           </p>
           <p className="mt-1">
             Powered by{" "}
-            <a
-              href="https://sourceful.energy"
-              className="text-primary hover:underline"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
+            <a href="https://sourceful.energy" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
               Sourceful Energy
+            </a>
+            {" • "}
+            Priser från{" "}
+            <a href="https://www.elprisetjustnu.se" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
+              elprisetjustnu.se
             </a>
           </p>
         </div>
       </footer>
     </div>
   );
+}
+
+function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }

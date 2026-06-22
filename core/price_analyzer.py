@@ -1,151 +1,9 @@
 #!/usr/bin/env python3
 import pandas as pd
-import numpy as np
-import logging
-
-logger = logging.getLogger(__name__)
-
-class PriceAnalyzer:
-    def __init__(self):
-        pass
-    
-    def merge_data(self, prices_df, production_df, currency_rate=11.5):
-        """Merge price and production data on datetime index."""
-        # Ensure both dataframes have datetime index
-        if not isinstance(prices_df.index, pd.DatetimeIndex):
-            prices_df.index = pd.to_datetime(prices_df.index)
-        if not isinstance(production_df.index, pd.DatetimeIndex):
-            production_df.index = pd.to_datetime(production_df.index)
-        
-        # Merge on datetime index
-        merged_df = pd.merge(
-            prices_df, production_df,
-            left_index=True, right_index=True,
-            how='inner'
-        )
-        
-        # Calculate derived columns
-        merged_df['price_sek_per_kwh'] = merged_df['price_eur_per_mwh'] * currency_rate / 1000
-        merged_df['export_value_sek'] = merged_df['production_kwh'] * merged_df['price_sek_per_kwh']
-        
-        logger.info(f"Merged data: {len(merged_df)} records from {merged_df.index.min()} to {merged_df.index.max()}")
-        
-        return merged_df
-    
-    def analyze_data(self, merged_df):
-        """Perform comprehensive analysis on merged data."""
-        analysis = {}
-        
-        # Basic statistics
-        analysis['period_days'] = (merged_df.index.max() - merged_df.index.min()).days + 1
-        analysis['total_hours'] = len(merged_df)
-        
-        # Price statistics
-        analysis['price_min_eur_mwh'] = merged_df['price_eur_per_mwh'].min()
-        analysis['price_max_eur_mwh'] = merged_df['price_eur_per_mwh'].max()
-        analysis['price_mean_eur_mwh'] = merged_df['price_eur_per_mwh'].mean()
-        analysis['price_median_eur_mwh'] = merged_df['price_eur_per_mwh'].median()
-        
-        # Production statistics
-        analysis['production_total'] = merged_df['production_kwh'].sum()
-        analysis['production_mean'] = merged_df['production_kwh'].mean()
-        analysis['production_max'] = merged_df['production_kwh'].max()
-        analysis['hours_with_production'] = (merged_df['production_kwh'] > 0).sum()
-        
-        # Negative price analysis
-        negative_mask = merged_df['price_eur_per_mwh'] < 0
-        analysis['negative_price_hours'] = negative_mask.sum()
-        
-        if analysis['negative_price_hours'] > 0:
-            negative_production_mask = negative_mask & (merged_df['production_kwh'] > 0)
-            analysis['production_during_negative_prices'] = merged_df.loc[negative_production_mask, 'production_kwh'].sum()
-            analysis['avg_production_during_negative_prices'] = merged_df.loc[negative_production_mask, 'production_kwh'].mean()
-            analysis['negative_export_cost_abs_sek'] = abs(merged_df.loc[negative_mask, 'export_value_sek'].sum())
-        else:
-            analysis['production_during_negative_prices'] = 0
-            analysis['avg_production_during_negative_prices'] = 0
-            analysis['negative_export_cost_abs_sek'] = 0
-        
-        # Export value analysis
-        analysis['total_export_value_sek'] = merged_df['export_value_sek'].sum()
-        positive_mask = merged_df['price_eur_per_mwh'] > 0
-        analysis['positive_export_value_sek'] = merged_df.loc[positive_mask, 'export_value_sek'].sum()
-        
-        # Time series data for charts
-        analysis['time_series'] = {
-            'timestamps': merged_df.index.strftime('%Y-%m-%d %H:%M').tolist(),
-            'prices_eur_mwh': merged_df['price_eur_per_mwh'].tolist(),
-            'production_kwh': merged_df['production_kwh'].tolist(),
-            'export_values_sek': merged_df['export_value_sek'].tolist()
-        }
-        
-        # Daily summary
-        daily_summary = self.get_daily_summary(merged_df)
-        analysis['daily_series'] = {
-            'dates': daily_summary.index.strftime('%Y-%m-%d').tolist(),
-            'daily_production': daily_summary['production_kwh_sum'].tolist(),
-            'daily_export_value': daily_summary['export_value_sek_sum'].tolist(),
-            'daily_avg_price': daily_summary['price_sek_per_kwh_mean'].tolist()
-        }
-        
-        return analysis
-    
-    def get_daily_summary(self, merged_df):
-        """Get daily summary statistics."""
-        daily_summary = merged_df.resample('D').agg({
-            'production_kwh': ['sum', 'mean', 'max'],
-            'price_sek_per_kwh': ['mean', 'min', 'max'],
-            'export_value_sek': ['sum', 'mean']
-        })
-        
-        # Flatten column names
-        daily_summary.columns = [f"{col[0]}_{col[1]}" for col in daily_summary.columns]
-        
-        return daily_summary
-    
-    def analyze_negative_prices(self, merged_df):
-        """Detailed analysis of negative price periods."""
-        negative_mask = merged_df['price_eur_per_mwh'] < 0
-        negative_df = merged_df[negative_mask].copy()
-        
-        if negative_df.empty:
-            return {
-                'has_negative_prices': False,
-                'message': 'No negative prices found in the dataset'
-            }
-        
-        # Find consecutive negative periods
-        negative_df['date'] = negative_df.index.date
-        negative_df['hour'] = negative_df.index.hour
-        
-        # Group by date
-        daily_negative = negative_df.groupby('date').agg({
-            'production_kwh': 'sum',
-            'export_value_sek': 'sum',
-            'price_eur_per_mwh': ['min', 'mean']
-        })
-        
-        # Monthly breakdown
-        negative_df['month'] = negative_df.index.to_period('M')
-        monthly_negative = negative_df.groupby('month').agg({
-            'production_kwh': 'sum',
-            'export_value_sek': 'sum'
-        })
-        
-        return {
-            'has_negative_prices': True,
-            'total_negative_hours': len(negative_df),
-            'total_cost_sek': abs(negative_df['export_value_sek'].sum()),
-            'average_negative_price_eur_mwh': negative_df['price_eur_per_mwh'].mean(),
-            'lowest_price_eur_mwh': negative_df['price_eur_per_mwh'].min(),
-            'daily_breakdown': daily_negative,
-            'monthly_breakdown': monthly_negative,
-            'most_expensive_hours': negative_df.nsmallest(10, 'export_value_sek')
-        }
-
-import pandas as pd
 import logging
 from typing import Dict, Any
+
+from .intervals import infer_step_hours, interval_hours_series
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -153,57 +11,125 @@ logger = logging.getLogger(__name__)
 
 
 class PriceAnalyzer:
-    """Core analysis engine for price and production data."""
-    
+    """Core analysis engine for price and production data.
+
+    Interval-aware: production and prices may differ in resolution (hourly,
+    15-minute from 2025-10-01, or daily). Prices are aligned onto the production
+    timeline without dropping rows, and every "hours" metric is derived from each
+    row's actual interval length rather than assuming one row equals one hour.
+    """
+
     @staticmethod
     def merge_data(prices_df: pd.DataFrame, production_df: pd.DataFrame, eur_sek_rate: float = 11.5) -> pd.DataFrame:
         """
-        Merge price and production data on datetime index.
-        
+        Align prices onto the production timeline and compute derived columns.
+
+        Unlike a plain inner join (which silently discards rows when production and
+        prices have different cadences), this resamples the price series to the
+        production resolution so no production interval is lost:
+          * finer prices (e.g. 15-min prices vs. hourly production) are averaged
+            down to the production grid;
+          * coarser prices (e.g. hourly prices vs. 15-min production) are
+            forward-filled onto the production grid.
+
         Args:
-            prices_df (pd.DataFrame): Price data with datetime index
-            production_df (pd.DataFrame): Production data with datetime index
-            eur_sek_rate (float): EUR to SEK exchange rate
-            
+            prices_df: Price data with datetime index and 'price_eur_per_mwh'.
+            production_df: Production data with datetime index and 'production_kwh'.
+            eur_sek_rate: EUR to SEK exchange rate.
+
         Returns:
-            pd.DataFrame: Merged data with calculated columns
+            pd.DataFrame: One row per production interval, with price, SEK price,
+            export value and per-row 'interval_hours'.
         """
         logger.info("Merging price and production data")
-        
-        # Merge on datetime index
-        merged_df = pd.merge(prices_df, production_df, left_index=True, right_index=True, how='inner')
-        
-        # Add SEK pricing (convert from EUR/MWh to SEK/kWh)
+
+        if not isinstance(prices_df.index, pd.DatetimeIndex):
+            prices_df = prices_df.copy()
+            prices_df.index = pd.to_datetime(prices_df.index)
+        if not isinstance(production_df.index, pd.DatetimeIndex):
+            production_df = production_df.copy()
+            production_df.index = pd.to_datetime(production_df.index)
+
+        prices_df = prices_df.sort_index()
+        production_df = production_df.sort_index()
+
+        prod_step = infer_step_hours(production_df.index)
+        price_step = infer_step_hours(prices_df.index)
+
+        if prices_df.index.equals(production_df.index):
+            # Same cadence: no resampling needed.
+            merged_df = production_df.copy()
+            merged_df['price_eur_per_mwh'] = prices_df['price_eur_per_mwh']
+            merged_df = merged_df.dropna(subset=['price_eur_per_mwh'])
+        else:
+            # Different cadence: project both onto a regular grid at the FINER of the
+            # two resolutions over their overlapping span. Production energy is split
+            # evenly across the finer cells (so 15-minute negative-price spikes are
+            # surfaced even when production is only hourly); prices are held constant
+            # within their interval (forward-filled). This mirrors the browser engine.
+            step_hours = min(prod_step, price_step)
+            target = pd.Timedelta(hours=step_hours)
+
+            cov_start = max(production_df.index.min(), prices_df.index.min())
+            cov_end = min(
+                production_df.index.max() + pd.Timedelta(hours=prod_step),
+                prices_df.index.max() + pd.Timedelta(hours=price_step),
+            )
+            if cov_end <= cov_start:
+                raise ValueError("Price and production data do not overlap in time.")
+
+            grid = pd.date_range(cov_start, cov_end, freq=target, inclusive='left')
+            prod_on_grid = production_df['production_kwh'].reindex(grid, method='ffill') * (step_hours / prod_step)
+            price_on_grid = prices_df['price_eur_per_mwh'].reindex(grid, method='ffill')
+
+            merged_df = pd.DataFrame(
+                {'production_kwh': prod_on_grid, 'price_eur_per_mwh': price_on_grid},
+                index=grid,
+            ).dropna(subset=['price_eur_per_mwh', 'production_kwh'])
+
+        # Per-row interval length in hours (drives all "hours" metrics).
+        merged_df['interval_hours'] = interval_hours_series(merged_df.index).reindex(merged_df.index).values
+
+        # SEK pricing (convert from EUR/MWh to SEK/kWh). Energy is already per-interval
+        # kWh, so export value = energy * price is correct at any resolution.
         merged_df['price_sek_per_kwh'] = (merged_df['price_eur_per_mwh'] * eur_sek_rate) / 1000
-        
-        # Calculate export value/cost for each hour
         merged_df['export_value_sek'] = merged_df['production_kwh'] * merged_df['price_sek_per_kwh']
-        
-        # Add daily aggregations
+
+        # Daily aggregations
         merged_df['production_daily'] = merged_df.groupby(merged_df.index.date)['production_kwh'].transform('sum')
         merged_df['price_daily_avg'] = merged_df.groupby(merged_df.index.date)['price_eur_per_mwh'].transform('mean')
         merged_df['export_value_daily_sek'] = merged_df.groupby(merged_df.index.date)['export_value_sek'].transform('sum')
-        
+
         logger.info(f"Merged data: {len(merged_df)} rows from {merged_df.index.min()} to {merged_df.index.max()}")
-        
+
         return merged_df
-    
+
     @staticmethod
-    def analyze_data(merged_df: pd.DataFrame) -> Dict[str, Any]:
+    def analyze_data(merged_df: pd.DataFrame, fuse_amps: float = None, voltage: float = 400.0) -> Dict[str, Any]:
         """
         Perform comprehensive analysis on merged price and production data.
-        
+
         Args:
             merged_df (pd.DataFrame): Merged price and production data
-            
+            fuse_amps (float, optional): Main fuse rating (A). If given, adds a
+                grid-connection "flat peak" analysis (time export power was maxed out).
+            voltage (float): Line voltage for the 3-phase power calc (default 400 V).
+
         Returns:
             Dict[str, Any]: Analysis results with statistics and insights
         """
         analysis = {}
-        
+
+        # Per-row interval length in hours. Falls back to 1.0 if merge_data wasn't used.
+        if 'interval_hours' in merged_df.columns:
+            interval_hours = merged_df['interval_hours']
+        else:
+            interval_hours = interval_hours_series(merged_df.index).reindex(merged_df.index)
+
         # Basic statistics
         analysis['period_days'] = (merged_df.index.max() - merged_df.index.min()).days
-        analysis['total_hours'] = len(merged_df)
+        analysis['total_intervals'] = len(merged_df)
+        analysis['total_hours'] = float(interval_hours.sum())  # duration, not row count
         
         # Time series data for charts (limit to prevent large payloads)
         time_series_limit = min(len(merged_df), 720)  # Max 30 days of hourly data
@@ -260,17 +186,19 @@ class PriceAnalyzer:
         analysis['production_total'] = merged_df['production_kwh'].sum()
         analysis['production_mean'] = merged_df['production_kwh'].mean()
         analysis['production_max'] = merged_df['production_kwh'].max()
-        analysis['hours_with_production'] = (merged_df['production_kwh'] > 0).sum()
-        
+        analysis['hours_with_production'] = float(interval_hours[merged_df['production_kwh'] > 0].sum())
+
         # Negative price analysis (Enhanced)
-        negative_prices = merged_df[merged_df['price_eur_per_mwh'] < 0]
-        analysis['negative_price_hours'] = len(negative_prices)
+        negative_mask = merged_df['price_eur_per_mwh'] < 0
+        negative_prices = merged_df[negative_mask]
+        analysis['negative_price_intervals'] = len(negative_prices)
+        analysis['negative_price_hours'] = float(interval_hours[negative_mask].sum())  # duration
         analysis['production_during_negative_prices'] = negative_prices['production_kwh'].sum()
         analysis['negative_export_cost_sek'] = negative_prices['export_value_sek'].sum()  # This will be negative
         analysis['negative_export_cost_abs_sek'] = abs(negative_prices['export_value_sek'].sum())  # Absolute cost
-        
-        # Enhanced negative pricing metrics
-        analysis['negative_price_percentage'] = (len(negative_prices) / len(merged_df)) * 100 if len(merged_df) > 0 else 0
+
+        # Enhanced negative pricing metrics (share of time, by duration)
+        analysis['negative_price_percentage'] = (analysis['negative_price_hours'] / analysis['total_hours']) * 100 if analysis['total_hours'] > 0 else 0
         analysis['production_percentage_negative_prices'] = (analysis['production_during_negative_prices'] / analysis['production_total']) * 100 if analysis['production_total'] > 0 else 0
         
         if len(negative_prices) > 0:
@@ -306,7 +234,26 @@ class PriceAnalyzer:
         # Volatility metrics
         analysis['price_volatility_std'] = merged_df['price_sek_per_kwh'].std()
         analysis['price_volatility_cv'] = analysis['price_volatility_std'] / analysis['price_mean_sek_kwh'] if analysis['price_mean_sek_kwh'] != 0 else 0
-        
+
+        # Grid-connection (main fuse) flat-peak analysis. Average power per interval =
+        # energy / duration, so 15-minute data catches short clipping peaks that hourly
+        # data averages away. Mirrors the browser engine's analyzeFusePeaks().
+        if fuse_amps:
+            limit_kw = (3 ** 0.5) * voltage * fuse_amps / 1000.0
+            threshold = limit_kw * 0.98  # within 2% of the limit counts as "maxed out"
+            power_kw = merged_df['production_kwh'] / interval_hours
+            maxed = power_kw >= threshold
+            hours_at_max = float(interval_hours[maxed].sum())
+            analysis['grid_connection'] = {
+                'fuse_amp': fuse_amps,
+                'fuse_limit_kw': round(limit_kw, 2),
+                'peak_power_kw': round(float(power_kw.max()), 2),
+                'hours_at_max': round(hours_at_max, 2),
+                'share_time_at_max_pct': round(hours_at_max / analysis['total_hours'] * 100, 1) if analysis['total_hours'] else 0.0,
+                'energy_at_max_kwh': round(float(merged_df.loc[maxed, 'production_kwh'].sum()), 2),
+                'peaks': int(maxed.sum()),
+            }
+
         return analysis
     
     @staticmethod

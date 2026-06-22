@@ -81,7 +81,7 @@ def test_price_analyzer():
         from core.price_analyzer import PriceAnalyzer
         
         # Create sample data
-        dates = pd.date_range('2024-01-01', periods=24, freq='H')
+        dates = pd.date_range('2024-01-01', periods=24, freq='h')
         prices_df = pd.DataFrame({
             'price_eur_per_mwh': [50, -10, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120,
                                   130, 120, 110, 100, 90, 80, 70, 60, 50, 40, 30, 20]

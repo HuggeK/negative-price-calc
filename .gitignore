@@ -25,6 +25,9 @@ wheels/
 .cache/
 *.log
 
+# Test artifacts
+test_price_data.db
+
 # User data and tracking (not for open source)
 leads.csv
 data/email_logs.txt

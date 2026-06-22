@@ -18,6 +18,8 @@ import {
   Download,
   FileJson,
   Sparkles,
+  Plug,
+  PiggyBank,
 } from "lucide-react";
 import { PriceChart } from "./price-chart";
 
@@ -85,6 +87,25 @@ interface AnalysisData {
       negative_kwh?: number;
       negative_value_sek?: number;
     }>;
+  };
+  natanslutning?: {
+    sakring_amp?: number;
+    sakring_kw?: number;
+    hogsta_effekt_kw?: number;
+    timmar_vid_max?: number;
+    andel_tid_vid_max_pct?: number;
+    energi_vid_max_kwh?: number;
+    antal_toppar?: number;
+  };
+  sjalvkonsumtion?: {
+    vat_pct?: number;
+    energiskatt_sek_per_kwh?: number;
+    natavgift_sek_per_kwh?: number;
+    varde_self_sek_per_kwh?: number;
+    spot_netto_sek_per_kwh?: number;
+    spot_brutto_sek_per_kwh?: number;
+    undvikna_avgifter_sek_per_kwh?: number;
+    okning_vs_export_sek_per_kwh?: number;
   };
 }
 
@@ -218,7 +239,7 @@ export function AnalysisResults({
           </Button>
           <Button variant="default" size="sm" onClick={onDownloadXlsx}>
             <Download className="h-4 w-4 mr-2" />
-            Excel
+            CSV
           </Button>
         </div>
       </div>
@@ -309,6 +330,75 @@ export function AnalysisResults({
             <div className="mt-2 text-sm text-muted-foreground">
               Realiserat pris: {formatNumber(realizedPrice, 2)} kr/kWh vs
               snitt: {formatNumber(avgPrice, 2)} kr/kWh
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Grid connection (main fuse) peaks */}
+      {data.natanslutning && (
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center gap-2">
+              <Plug className="h-5 w-5 text-primary" />
+              <CardTitle className="text-lg">Nätanslutning</CardTitle>
+            </div>
+            <CardDescription>
+              Hur ofta din export nådde huvudsäkringens gräns ({formatNumber(data.natanslutning.sakring_amp)} A
+              ≈ {formatNumber(data.natanslutning.sakring_kw, 1)} kW)
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div>
+                <div className="text-2xl font-bold font-mono">
+                  {formatNumber(data.natanslutning.timmar_vid_max, 1)} <span className="text-base">h</span>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  vid max ({formatNumber(data.natanslutning.andel_tid_vid_max_pct, 1)}% av tiden)
+                </p>
+              </div>
+              <div>
+                <div className="text-2xl font-bold font-mono">
+                  {formatNumber(data.natanslutning.hogsta_effekt_kw, 1)} <span className="text-base">kW</span>
+                </div>
+                <p className="text-sm text-muted-foreground">högsta uppmätta effekt</p>
+              </div>
+              <div>
+                <div className="text-2xl font-bold font-mono">
+                  {formatNumber(data.natanslutning.energi_vid_max_kwh, 1)} <span className="text-base">kWh</span>
+                </div>
+                <p className="text-sm text-muted-foreground">exporterat vid max</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Self-consumption valuation (payment / VAT) */}
+      {data.sjalvkonsumtion && (
+        <Card className="border-primary/20 bg-primary/5">
+          <CardHeader className="pb-2">
+            <div className="flex items-center gap-2">
+              <PiggyBank className="h-5 w-5 text-primary" />
+              <CardTitle className="text-lg">Värde av självkonsumtion</CardTitle>
+            </div>
+            <CardDescription>
+              Vad en kWh är värd om du använder den själv (inkl. {formatNumber(data.sjalvkonsumtion.vat_pct, 0)}% moms)
+              jämfört med att exportera till spotpris
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-bold font-mono text-primary">
+                {formatNumber(data.sjalvkonsumtion.varde_self_sek_per_kwh, 2)} kr/kWh
+              </span>
+              <span className="text-muted-foreground">vid självkonsumtion</span>
+            </div>
+            <div className="mt-2 text-sm text-muted-foreground">
+              +{formatNumber(data.sjalvkonsumtion.okning_vs_export_sek_per_kwh, 2)} kr/kWh mer än export
+              (spot brutto {formatNumber(data.sjalvkonsumtion.spot_brutto_sek_per_kwh, 2)} + undvikna avgifter{" "}
+              {formatNumber(data.sjalvkonsumtion.undvikna_avgifter_sek_per_kwh, 2)} kr/kWh)
             </div>
           </CardContent>
         </Card>

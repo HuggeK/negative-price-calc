@@ -9,6 +9,17 @@ interface FileUploadProps {
   selectedFile: File | null;
 }
 
+function isValidFile(file: File): boolean {
+  const validTypes = [
+    "text/csv",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ];
+  const validExtensions = [".csv", ".xlsx", ".xls"];
+  const extension = file.name.toLowerCase().slice(file.name.lastIndexOf("."));
+  return validTypes.includes(file.type) || validExtensions.includes(extension);
+}
+
 export function FileUpload({ onFileSelect, selectedFile }: FileUploadProps) {
   const [isDragOver, setIsDragOver] = useState(false);
 
@@ -43,17 +54,6 @@ export function FileUpload({ onFileSelect, selectedFile }: FileUploadProps) {
     },
     [onFileSelect]
   );
-
-  const isValidFile = (file: File) => {
-    const validTypes = [
-      "text/csv",
-      "application/vnd.ms-excel",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    ];
-    const validExtensions = [".csv", ".xlsx", ".xls"];
-    const extension = file.name.toLowerCase().slice(file.name.lastIndexOf("."));
-    return validTypes.includes(file.type) || validExtensions.includes(extension);
-  };
 
   const removeFile = useCallback(() => {
     onFileSelect(null);

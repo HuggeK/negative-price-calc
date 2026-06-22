@@ -149,6 +149,9 @@ def analyze():
 
         # Check if OpenAI key is available for AI explanations
         has_openai_key = bool(os.getenv('OPENAI_API_KEY'))
+        # Respect the user's AI summarisation/insights toggle (defaults to on)
+        ai_insights = request.form.get('ai_insights', 'true').lower() != 'false'
+        use_ai = has_openai_key and ai_insights
 
         # Save uploaded file temporarily
         filename = secure_filename(file.filename)
@@ -165,8 +168,8 @@ def analyze():
                 '--json'
             ]
 
-            # Add AI explainer only if OpenAI key is available
-            if has_openai_key:
+            # Add AI explainer only when a key is available and the user opted in
+            if use_ai:
                 cmd.append('--ai-explainer')
 
             # Run the CLI command
@@ -197,7 +200,7 @@ def analyze():
                     'area': area,
                     'currency': currency,
                     'analyzed_at': datetime.now().isoformat(),
-                    'ai_enabled': has_openai_key
+                    'ai_enabled': use_ai
                 }
             }
 
@@ -417,6 +420,9 @@ def analyze_stream():
             area = request.form.get('area', 'SE_4')
             currency = 'SEK'
             has_openai_key = bool(os.getenv('OPENAI_API_KEY'))
+            # Respect the user's AI summarisation/insights toggle (defaults to on)
+            ai_insights = request.form.get('ai_insights', 'true').lower() != 'false'
+            use_ai = has_openai_key and ai_insights
 
             # Save file
             filename = secure_filename(file.filename)
@@ -495,7 +501,7 @@ def analyze_stream():
                 '--json'
             ]
 
-            if has_openai_key:
+            if use_ai:
                 cmd.append('--ai-explainer')
 
             # If we need AI parsing, run it first and wait for result
@@ -558,7 +564,7 @@ def analyze_stream():
 
                 yield f"data: {json.dumps({'type': 'progress', 'message': 'Beräknar intäkter och förluster...'})}\n\n"
 
-                if has_openai_key:
+                if use_ai:
                     yield f"data: {json.dumps({'type': 'ai', 'message': 'AI analyserar dina mönster...'})}\n\n"
 
                 # Wait for process to complete
@@ -602,7 +608,7 @@ def analyze_stream():
                     'area': area,
                     'currency': currency,
                     'analyzed_at': datetime.now().isoformat(),
-                    'ai_enabled': has_openai_key
+                    'ai_enabled': use_ai
                 }
             }
 

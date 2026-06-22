@@ -70,21 +70,36 @@ class PriceDatabaseManager:
         return df
     
     def has_data_for_period(self, area_code, start_date, end_date):
-        """Check if database has data for the specified period."""
-        query = '''
-            SELECT COUNT(*) FROM price_data 
-            WHERE area_code = ? AND datetime BETWEEN ? AND ?
-        '''
-        
+        """Check if database has data for the specified period.
+
+        Resolution-aware: Swedish bidding zones moved from hourly to 15-minute
+        market time units on 2025-10-01, so the same period can hold 1 or 4 points
+        per hour. We detect the dominant spacing of the cached rows and size the
+        completeness expectation accordingly instead of assuming hourly.
+        """
+        start_str = pd.Timestamp(start_date).strftime('%Y-%m-%d %H:%M:%S')
+        end_str = pd.Timestamp(end_date).strftime('%Y-%m-%d %H:%M:%S')
+
         with sqlite3.connect(self.db_path) as conn:
             count = conn.execute(
-                query,
-                [
-                    area_code,
-                    pd.Timestamp(start_date).strftime('%Y-%m-%d %H:%M:%S'),
-                    pd.Timestamp(end_date).strftime('%Y-%m-%d %H:%M:%S'),
-                ],
+                'SELECT COUNT(*) FROM price_data WHERE area_code = ? AND datetime BETWEEN ? AND ?',
+                [area_code, start_str, end_str],
             ).fetchone()[0]
-        
-        expected_hours = (pd.Timestamp(end_date) - pd.Timestamp(start_date)).total_seconds() / 3600
-        return count >= expected_hours * 0.8  # Allow 20% missing data
+            if count == 0:
+                return False
+            # Sample the two earliest timestamps in range to infer the cadence.
+            sample = conn.execute(
+                'SELECT datetime FROM price_data WHERE area_code = ? AND datetime BETWEEN ? AND ? '
+                'ORDER BY datetime LIMIT 2',
+                [area_code, start_str, end_str],
+            ).fetchall()
+
+        step_hours = 1.0
+        if len(sample) == 2:
+            delta = (pd.Timestamp(sample[1][0]) - pd.Timestamp(sample[0][0])).total_seconds() / 3600
+            if delta > 0:
+                step_hours = delta
+
+        total_hours = (pd.Timestamp(end_date) - pd.Timestamp(start_date)).total_seconds() / 3600
+        expected_points = total_hours / step_hours
+        return count >= expected_points * 0.8  # Allow 20% missing data
