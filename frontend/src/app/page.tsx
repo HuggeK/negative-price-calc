@@ -14,7 +14,7 @@ import {
   Checkbox,
 } from "@sourceful-energy/ui";
 import { toast } from "sonner";
-import { X, Sparkles, Loader2 } from "lucide-react";
+import { X, Sparkles, Loader2, ChevronDown } from "lucide-react";
 import { Header } from "@/components/header";
 import { FileUpload } from "@/components/file-upload";
 import { StreamingTerminal, LogEntry } from "@/components/streaming-terminal";
@@ -118,6 +118,7 @@ export default function Home() {
   const [aiKey, setAiKey] = useState("");
   const [subscribe, setSubscribe] = useState(false);
   const [email, setEmail] = useState("");
+  const [showSelfConsumption, setShowSelfConsumption] = useState(false);
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isLoadingExample, setIsLoadingExample] = useState(false);
@@ -204,6 +205,11 @@ export default function Home() {
     gridFeeOre,
     aiInsights,
   ]);
+
+  // Auto-expand the self-consumption section if it has values (e.g. restored from storage).
+  useEffect(() => {
+    if (energyTaxOre.trim() || gridFeeOre.trim()) setShowSelfConsumption(true);
+  }, [energyTaxOre, gridFeeOre]);
 
   const addLog = useCallback((type: LogEntry["type"], message: string) => {
     const timestamp = new Date().toLocaleTimeString("sv-SE", {
@@ -588,22 +594,34 @@ export default function Home() {
                   </p>
                 </div>
 
-                {/* Self-consumption valuation (separate, optional) */}
+                {/* Self-consumption valuation (separate, optional, collapsible) */}
                 <div className="space-y-3 border-t border-border/50 pt-4">
-                  <h4 className="text-sm font-medium text-foreground">Värde av självkonsumtion (valfritt)</h4>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="tax">Energiskatt (öre/kWh)</Label>
-                      <Input id="tax" inputMode="decimal" value={energyTaxOre} onChange={(e) => setEnergyTaxOre(e.target.value)} placeholder="t.ex. 42,82" />
+                  <button
+                    type="button"
+                    onClick={() => setShowSelfConsumption((v) => !v)}
+                    className="flex w-full items-center justify-between text-left"
+                    aria-expanded={showSelfConsumption}
+                  >
+                    <h4 className="text-sm font-medium text-foreground">Värde av självkonsumtion (valfritt)</h4>
+                    <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${showSelfConsumption ? "rotate-180" : ""}`} />
+                  </button>
+                  {showSelfConsumption && (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                          <Label htmlFor="tax">Energiskatt (öre/kWh)</Label>
+                          <Input id="tax" inputMode="decimal" value={energyTaxOre} onChange={(e) => setEnergyTaxOre(e.target.value)} placeholder="t.ex. 42,82" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="fee">Nätavgift (öre/kWh)</Label>
+                          <Input id="fee" inputMode="decimal" value={gridFeeOre} onChange={(e) => setGridFeeOre(e.target.value)} placeholder="t.ex. 25" />
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Visar vad en kWh är värd om du använder den själv – (spotpris + energiskatt + nätavgift) × (1 + moms) – jämfört med att exportera den. Lämna tomt för att hoppa över.
+                      </p>
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="fee">Nätavgift (öre/kWh)</Label>
-                      <Input id="fee" inputMode="decimal" value={gridFeeOre} onChange={(e) => setGridFeeOre(e.target.value)} placeholder="t.ex. 25" />
-                    </div>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Visar vad en kWh är värd om du använder den själv – (spotpris + energiskatt + nätavgift) × (1 + moms) – jämfört med att exportera den. Lämna tomt för att hoppa över.
-                  </p>
+                  )}
                 </div>
 
                 <div className="pt-3 border-t border-border/50 flex items-center justify-between gap-2">

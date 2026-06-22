@@ -8,6 +8,10 @@ import {
   CardTitle,
   Badge,
   Button,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from "@sourceful-energy/ui";
 import {
   Zap,
@@ -23,6 +27,7 @@ import {
   Banknote,
   TrendingDown as TrendingDownIcon,
   CalendarDays,
+  Info,
 } from "lucide-react";
 import { PriceChart } from "./price-chart";
 import { LossChart } from "./loss-chart";
@@ -254,6 +259,35 @@ function formatSwedishDate(dateStr: string | undefined): string {
   return `${day} ${month} ${year}`;
 }
 
+const TIMING_INFO =
+  "Hur mycket lägre (eller högre) pris du fick jämfört med marknadens enkla snittpris för perioden. Solel produceras mest mitt på dagen då spotpriset ofta är lägre.";
+const REALIZED_PRICE_INFO =
+  "Det volymviktade snittpriset du faktiskt fick – totala intäkter delat med exporterad kWh. Varje kWh viktas med priset i den kvart den exporterades.";
+const MARKET_AVG_INFO =
+  "Enkelt snittpris (spot) över hela perioden, oavsett om du producerade just då.";
+
+/** A small info icon that reveals an explanation on hover / focus. */
+function InfoTooltip({ text }: { text: string }) {
+  return (
+    <TooltipProvider delayDuration={150}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-label="Förklaring"
+            className="inline-flex align-middle text-muted-foreground hover:text-foreground"
+          >
+            <Info className="h-3.5 w-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-xs">
+          <p className="text-xs leading-relaxed">{text}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 function getGranularityLabel(granularity: string | undefined): string {
   switch (granularity?.toLowerCase()) {
     case "hourly":
@@ -478,6 +512,7 @@ export function AnalysisResults({
             <div className="flex items-center gap-2">
               <TrendingDown className="h-5 w-5 text-primary" />
               <CardTitle className="text-lg">Timing-rabatt</CardTitle>
+              <InfoTooltip text={TIMING_INFO} />
             </div>
             <CardDescription>
               Hur mycket {timingDiscountPct >= 0 ? "lägre" : "högre"} pris du fick jämfört med periodens snittpris –
@@ -494,13 +529,9 @@ export function AnalysisResults({
               </span>
             </div>
             <div className="mt-2 text-sm text-muted-foreground">
-              Realiserat pris {formatOre(realizedPrice)}/kWh vs marknadens snitt {formatOre(avgPrice)}/kWh.
+              Realiserat pris <InfoTooltip text={REALIZED_PRICE_INFO} /> {formatOre(realizedPrice)}/kWh
+              {" "}vs marknadens snitt <InfoTooltip text={MARKET_AVG_INFO} /> {formatOre(avgPrice)}/kWh.
             </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              <span className="text-foreground">Realiserat pris</span> = snittpriset viktat efter när du faktiskt
-              exporterade (totala intäkter ÷ exporterad kWh). <span className="text-foreground">Marknadens snitt</span> =
-              enkelt snittpris över hela perioden, oavsett om du producerade.
-            </p>
           </CardContent>
         </Card>
       )}
