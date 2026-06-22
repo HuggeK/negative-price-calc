@@ -40,7 +40,12 @@ def main():
         # Load production data
         print(f"Loading production data from {args.production_file}...")
         production_df = production_loader.load_production_data(args.production_file)
-        
+
+        # Validate the input resolution (15-minute / quarter-hour recommended).
+        from core.intervals import assess_resolution
+        resolution = assess_resolution(production_df.index)
+        print(f"[{'OK' if resolution.level == 'ok' else 'WARNING'}] {resolution.message}")
+
         # Determine date range
         production_start = pd.Timestamp(production_df.index.min(), tz='Europe/Stockholm')
         production_end = pd.Timestamp(production_df.index.max(), tz='Europe/Stockholm')

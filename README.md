@@ -13,7 +13,7 @@ Analyze your solar export against historical Swedish spot prices — including *
 
 When you have solar panels you sell excess electricity to the grid. But spot prices sometimes go **negative** — meaning you pay to export. Since the 60 öre/kWh tax credit ended on 1 January 2026, the spot price alone decides what your export is worth. This tool helps you:
 
-- 📊 **Analyze your production** — upload your hourly / 15-minute / daily export CSV
+- 📊 **Analyze your production** — upload your export CSV (**15-minute / quarter-hour recommended**; hourly and daily also work)
 - 💸 **Detect negative-price periods** — see when exporting cost you money
 - ⏱️ **Catch sub-hour peaks** — full **15-minute** resolution (the Swedish market moved to 15-min on 2025-10-01)
 - 🔌 **Check your grid connection** — how long export was pinned at your main-fuse limit ("flat peaks")
@@ -35,12 +35,12 @@ When you have solar panels you sell excess electricity to the grid. But spot pri
 ## 📖 How to use
 
 1. **Get your export data** — log in to your grid/energy company's portal and export your meter data as CSV.
-2. **Upload the file** — hourly, 15-minute or daily data is detected automatically.
+2. **Upload the file** — **15-minute (quarter-hour) data is recommended**; hourly and daily are also detected automatically. No file of your own? Click **Prova med exempeldata** to run a bundled 15-minute sample.
 3. **Choose your bidding zone** — SE1–SE4.
-4. **(Optional) settings** — main fuse size (A), VAT %, energy tax and grid fee (kr/kWh), and the AI summary toggle.
-5. **Click "Analysera"** — the report appears directly in the browser. Download it as JSON or CSV.
+4. **(Optional) settings** — main fuse size (A), VAT %, energy tax and grid fee (kr/kWh), and the AI summary toggle (off by default).
+5. **Click "Analysera"** — the report appears directly in the browser, labelled with the data resolution (kvart / 15-min). Download it as JSON or CSV.
 
-Sample files live in [`data/samples/`](data/samples/). The browser app reads **CSV** (export Excel files as CSV first); the Python CLI also reads Excel.
+Sample files live in [`python/data/samples/`](python/data/samples/); the web app's bundled example is [`frontend/public/exempel-15min.csv`](frontend/public/exempel-15min.csv). The browser app reads **CSV** (export Excel files as CSV first); the Python CLI also reads Excel.
 
 ## 🧮 What the analysis shows
 
@@ -70,22 +70,24 @@ ENTSO-E's API sends no CORS headers, so a browser on a static site cannot read i
 ```
 negative-price-calc/
 ├── frontend/                     # The deployed web app (Next.js, static export)
+│   ├── public/exempel-15min.csv  # Bundled 15-min example for the "Prova med exempeldata" button
 │   └── src/
 │       ├── app/page.tsx          # Upload UI, settings, results
 │       ├── components/           # Results cards, charts, terminal, upload
 │       └── lib/                  # Client-side engine:
-│           ├── parseProduction.ts  #   CSV parsing (Swedish formats)
+│           ├── parseProduction.ts  #   CSV parsing (Swedish formats) + 15-min validation
 │           ├── prices.ts           #   elprisetjustnu.se price client
 │           ├── analyze.ts          #   interval-aware analysis (overlap allocation)
 │           └── aiSummary.ts        #   optional OpenRouter summary (browser, BYO key)
-├── core/                         # Python library / CLI (feature parity)
-│   ├── price_analyzer.py         #   interval-aware analysis + fuse flat-peak
-│   ├── intervals.py              #   granularity helpers
-│   ├── price_fetcher.py          #   ENTSO-E fetch (needs ENTSOE_API_KEY) + SQLite cache
-│   └── db_manager.py             #   price cache (resolution-aware)
-├── cli/main.py                   # `se-cli` command-line interface
-├── app.py                        # Optional Flask API (not used by the static app)
-└── data/samples/                 # Example production files
+└── python/                       # Python library / CLI (feature parity)
+    ├── core/
+    │   ├── price_analyzer.py     #   interval-aware analysis + fuse flat-peak
+    │   ├── intervals.py          #   granularity helpers + 15-min validation
+    │   ├── price_fetcher.py      #   ENTSO-E fetch (needs ENTSOE_API_KEY) + SQLite cache
+    │   └── db_manager.py         #   price cache (resolution-aware)
+    ├── cli/main.py               #   `se-cli` command-line interface
+    ├── app.py                    #   Optional Flask API (not used by the static app)
+    └── data/samples/             #   Example production files
 ```
 
 The **web app is fully client-side** and needs no backend. The **Python CLI/library** mirrors the analysis (15-minute intervals, fuse flat-peak, VAT/self-consumption) for offline/scripted use.
@@ -100,16 +102,17 @@ npm install
 npm run dev          # http://localhost:3000
 ```
 
-### Python CLI (optional)
+### Python CLI (optional, in `python/`)
 
 ```bash
+cd python
 uv sync
 uv run se-cli analyze your_file.csv --area SE_4 --json
 # self-consumption valuation:
 uv run se-cli analyze your_file.csv --area SE_4 --vat 25 --energy-tax 0.4282 --transmission-fee 0.25
 ```
 
-The CLI fetches prices from ENTSO-E (set `ENTSOE_API_KEY`) or uses the bundled SQLite cache.
+The CLI fetches prices from ENTSO-E (set `ENTSOE_API_KEY`) or uses the bundled SQLite cache. See [`python/README.md`](python/README.md) for details.
 
 ## ☁️ Deployment (GitHub Pages)
 
@@ -121,10 +124,11 @@ The web app is a static export deployed by GitHub Actions ([`.github/workflows/d
 ## 🧪 Tests
 
 ```bash
-# Python (interval-aware analysis + fuse parity)
+# Python (interval-aware analysis + fuse parity + 15-min validation)
+cd python
 uv run pytest            # or: python -m pytest test_intervals.py test_core.py
 
-# TypeScript engine sanity checks
+# TypeScript engine sanity checks (from repo root)
 node --experimental-strip-types frontend/scripts/test-analyze.mjs
 ```
 

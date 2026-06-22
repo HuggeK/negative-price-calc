@@ -1,3 +1,6 @@
+# Container for the optional Python Flask API/CLI.
+# Build context is this folder (./python). From the repo root use docker-compose,
+# or build directly with:  docker build -t negative-price-calc ./python
 # Use Python 3.12 slim image
 FROM python:3.12-slim
 

@@ -9,7 +9,13 @@ import pandas as pd
 import pytest
 
 from core.price_analyzer import PriceAnalyzer
-from core.intervals import infer_step_hours, interval_hours_series
+from core.intervals import (
+    infer_step_hours,
+    interval_hours_series,
+    assess_resolution,
+    granularity_from_hours,
+    step_consistency_pct,
+)
 
 
 def test_infer_step_hours_hourly_and_quarterly():
@@ -110,6 +116,32 @@ def test_no_fuse_means_no_grid_connection_block():
     production = pd.DataFrame({"production_kwh": [1.0, 1.0]}, index=idx)
     merged = PriceAnalyzer.merge_data(prices, production)
     assert "grid_connection" not in PriceAnalyzer.analyze_data(merged)
+
+
+def test_granularity_from_hours():
+    assert granularity_from_hours(0.25) == "15min"
+    assert granularity_from_hours(1.0) == "hourly"
+    assert granularity_from_hours(24.0) == "daily"
+    assert granularity_from_hours(0) == "unknown"
+
+
+def test_assess_resolution_accepts_quarter_hour():
+    idx = pd.date_range("2026-05-01", periods=12, freq="15min")
+    assert step_consistency_pct(idx) == pytest.approx(100.0)
+    a = assess_resolution(idx)
+    assert a.granularity == "15min"
+    assert a.step_minutes == pytest.approx(15.0)
+    assert a.is_quarter_hour is True
+    assert a.level == "ok"
+
+
+def test_assess_resolution_flags_hourly_data():
+    idx = pd.date_range("2026-05-01", periods=6, freq="h")
+    a = assess_resolution(idx)
+    assert a.granularity == "hourly"
+    assert a.is_quarter_hour is False
+    assert a.level == "warning"
+    assert "15-minute" in a.message
 
 
 def test_db_has_data_for_period_is_resolution_aware(tmp_path):

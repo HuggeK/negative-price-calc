@@ -6,14 +6,14 @@ The app runs entirely in your browser. Open it on GitHub Pages:
 
 **👉 https://huggek.github.io/negative-price-calc/**
 
-1. Upload your solar export file (CSV — hourly, 15-minute or daily).
+1. Upload your solar export file (CSV — **15-minute / quarter-hour recommended**; hourly and daily also work).
 2. Pick your bidding zone (SE1–SE4).
-3. (Optional) set your main fuse size and VAT / energy-tax / grid-fee, and toggle the AI summary.
-4. Click **Analysera** — the report appears right in the browser. Download it as JSON or CSV.
+3. (Optional) set your main fuse size and VAT / energy-tax / grid-fee, and toggle the AI summary (off by default).
+4. Click **Analysera** — the report appears right in the browser, labelled with the data resolution (kvart / 15-min). Download it as JSON or CSV.
 
 Nothing is uploaded to a server: parsing, price-matching and analysis all happen on your device. Prices come from the free [elprisetjustnu.se API](https://www.elprisetjustnu.se/elpris-api) (no key required), credited as the source in the app.
 
-No file of your own? Try one from [`data/samples/`](data/samples/).
+No file of your own? Click **Prova med exempeldata** in the app to run a bundled 15-minute sample, or grab one from [`python/data/samples/`](python/data/samples/).
 
 ## Optional: AI summary
 
@@ -27,9 +27,10 @@ npm install
 npm run dev          # http://localhost:3000
 ```
 
-## Use the Python CLI (optional)
+## Use the Python CLI (optional, in `python/`)
 
 ```bash
+cd python
 uv sync
 uv run se-cli analyze your_file.csv --area SE_4 --json
 ```

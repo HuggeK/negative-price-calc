@@ -1,0 +1,43 @@
+# CLAUDE.md — Python library / CLI
+
+Guidance for working in the `python/` folder. See the repo-root
+[CLAUDE.md](../CLAUDE.md) for the overall architecture.
+
+## What this is
+
+The Python implementation of the analysis: a feature-parity **library + CLI** for
+offline / scripted use and for ENTSO-E price fetching (the browser can't call ENTSO-E).
+It is **not** the deployed product — that's the static web app in `../frontend`.
+
+## Parity rule
+
+The TypeScript engine (`../frontend/src/lib/`) ships to users, so implement analysis
+changes there **first**, then mirror them here and add a test. Concretely:
+
+| TypeScript (`frontend/src/lib`) | Python (`python/`) |
+|---|---|
+| `analyze.ts` (overlap allocation, fuse, self-consumption) | `core/price_analyzer.py` |
+| `parseProduction.ts` `assessResolution()` | `core/intervals.py` `assess_resolution()` |
+| granularity helpers | `core/intervals.py` |
+
+## Commands (run from `python/`)
+
+```bash
+uv sync
+uv run se-cli analyze <file> --area SE_4 --json
+uv run pytest                  # or: python -m pytest test_intervals.py test_core.py
+uv run black . && uv run isort .
+```
+
+## Conventions
+
+- **Interval-aware**: never assume one row == one hour. Use `core/intervals.py`
+  (`infer_step_hours`, `interval_hours_series`) so metrics reflect real durations.
+- **15-minute resolution** is the recommended input (Swedish market since 2025-10-01).
+  Validate with `assess_resolution()`; warn (don't hard-fail) on coarser data.
+- pandas 3.0: use `freq="h"` (lowercase), not the deprecated `"H"`.
+- `core/__init__.py` imports are resilient: `PriceAnalyzer` and `PriceDatabaseManager`
+  always import; `PriceFetcher` / `ProductionLoader` are optional (heavy deps).
+- When emitting `--json` from `cli/main.py`, keep stdout machine-readable — send any
+  warnings to **stderr**.
+- Default data paths are relative to this folder (`data/price_data.db`).

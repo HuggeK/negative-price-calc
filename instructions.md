@@ -2,8 +2,13 @@
 
 > **Current state:** The product is now a **browser-only web app on GitHub Pages** —
 > just open https://huggek.github.io/negative-price-calc/ (no install). This document
-> describes the **legacy Python core/CLI**, which is kept for offline/scripted use and
+> describes the **Python core/CLI**, which is kept for offline/scripted use and
 > feature parity. For everyday use see [README.md](README.md) / [QUICKSTART.md](QUICKSTART.md).
+>
+> **Location:** the Python code now lives in [`python/`](python/) — `cd python` first, then
+> run the `uv` commands below. Paths like `core/…` and `data/price_data.db` in the snippets
+> are relative to that folder. See [`python/README.md`](python/README.md) for a concise guide.
+> Input data should ideally be **15-minute (quarter-hour)** resolution.
 
 ## Project Overview
 A Python application for analyzing electricity prices and solar production data, focusing on negative price detection and cost analysis.

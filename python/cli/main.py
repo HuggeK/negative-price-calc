@@ -1080,6 +1080,15 @@ def main():
             print("No production data found.")
             return
 
+        # Validate the input resolution (15-minute / quarter-hour is recommended since the
+        # Swedish market moved to 15-min settlement on 2025-10-01). Warn on stderr so the
+        # --json stdout stays machine-readable.
+        import sys
+        from core.intervals import assess_resolution
+        _res = assess_resolution(prod_df.index)
+        if _res.level != "ok":
+            print(f"[resolution] {_res.message}", file=sys.stderr)
+
         # Determine date range
         if gran == "hourly":
             start_date = pd.Timestamp(prod_df.index.min(), tz="Europe/Stockholm")

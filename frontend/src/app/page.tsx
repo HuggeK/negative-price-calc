@@ -80,7 +80,7 @@ export default function Home() {
   const [vatRate, setVatRate] = useState("25");
   const [energyTax, setEnergyTax] = useState("");
   const [gridFee, setGridFee] = useState("");
-  const [aiInsights, setAiInsights] = useState(true);
+  const [aiInsights, setAiInsights] = useState(false);
   const [aiKey, setAiKey] = useState("");
   const [subscribe, setSubscribe] = useState(false);
   const [email, setEmail] = useState("");
