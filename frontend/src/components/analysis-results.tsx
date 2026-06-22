@@ -21,8 +21,10 @@ import {
   Plug,
   PiggyBank,
   Banknote,
+  TrendingDown as TrendingDownIcon,
 } from "lucide-react";
 import { PriceChart } from "./price-chart";
+import { LossChart } from "./loss-chart";
 
 interface AnalysisData {
   hero?: {
@@ -98,12 +100,32 @@ interface AnalysisData {
     energi_vid_max_kwh?: number;
     antal_toppar?: number;
   };
+  forlust_export?: {
+    antal?: number;
+    intervall_minuter?: number;
+    troskel_spot_sek_per_kwh?: number;
+    total_kwh?: number;
+    total_forlust_sek?: number;
+    poster?: Array<{
+      start?: string;
+      spot_sek_per_kwh?: number;
+      effektivt_pris_sek_per_kwh?: number;
+      kwh?: number;
+      forlust_sek?: number;
+    }>;
+    serie?: Array<{ date?: string; forlust_sek?: number }>;
+  };
   exportersattning?: {
     moms_pct?: number;
     spot_sek_per_kwh?: number;
-    forlust_pct?: number;
-    forlustersattning_sek_per_kwh?: number;
-    fast_del_sek_per_kwh?: number;
+    elnat_fast_sek_per_kwh?: number;
+    elnat_pct?: number;
+    elnat_rorlig_sek_per_kwh?: number;
+    elnat_total_sek_per_kwh?: number;
+    elhandel_fast_sek_per_kwh?: number;
+    elhandel_pct?: number;
+    elhandel_rorlig_sek_per_kwh?: number;
+    elhandel_total_sek_per_kwh?: number;
     pris_innan_moms_sek_per_kwh?: number;
     effektivt_pris_sek_per_kwh?: number;
     spot_total_sek?: number;
@@ -163,6 +185,15 @@ function formatOreSigned(valueSek: number | undefined, decimals = 1): string {
   if (valueSek === undefined || valueSek === null) return "-";
   const sign = valueSek > 0 ? "+" : valueSek < 0 ? "−" : "";
   return `${sign}${formatNumber(Math.abs(valueSek) * 100, decimals)} öre`;
+}
+
+/** Format a wall-clock ISO timestamp as "15 maj 13:45" (no timezone shift). */
+function formatLossTime(iso: string | undefined): string {
+  if (!iso) return "";
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (!m) return iso;
+  const months = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "okt", "nov", "dec"];
+  return `${parseInt(m[3], 10)} ${months[parseInt(m[2], 10) - 1]} ${m[4]}:${m[5]}`;
 }
 
 function formatSwedishDate(dateStr: string | undefined): string {
@@ -467,10 +498,17 @@ export function AnalysisResults({
               </span>
               <span className="text-muted-foreground">effektivt pris</span>
             </div>
-            <div className="mt-2 text-sm text-muted-foreground">
-              Spot {formatOre(data.exportersattning.spot_sek_per_kwh)} + förlustersättning (elnätsbolag){" "}
-              {formatOre(data.exportersattning.forlustersattning_sek_per_kwh)} ({formatNumber(data.exportersattning.forlust_pct, 1)}%)
-              {" "}+ påslag/avdrag (elhandelsbolag) {formatOreSigned(data.exportersattning.fast_del_sek_per_kwh)} = {formatOre(data.exportersattning.pris_innan_moms_sek_per_kwh)}/kWh innan moms.
+            <div className="mt-2 space-y-0.5 text-sm text-muted-foreground">
+              <div>Spotpris: {formatOre(data.exportersattning.spot_sek_per_kwh)}/kWh</div>
+              <div>
+                Elnätsbolag (förlustersättning): {formatOreSigned(data.exportersattning.elnat_total_sek_per_kwh)}/kWh
+                {" "}— fast {formatOreSigned(data.exportersattning.elnat_fast_sek_per_kwh)} + rörlig {formatOreSigned(data.exportersattning.elnat_rorlig_sek_per_kwh)} ({formatNumber(data.exportersattning.elnat_pct, 1)}%)
+              </div>
+              <div>
+                Elhandelsbolag (påslag/avdrag): {formatOreSigned(data.exportersattning.elhandel_total_sek_per_kwh)}/kWh
+                {" "}— fast {formatOreSigned(data.exportersattning.elhandel_fast_sek_per_kwh)} + rörlig {formatOreSigned(data.exportersattning.elhandel_rorlig_sek_per_kwh)} ({formatNumber(data.exportersattning.elhandel_pct, 1)}%)
+              </div>
+              <div>Innan moms: {formatOre(data.exportersattning.pris_innan_moms_sek_per_kwh)}/kWh × (1 + {formatNumber(data.exportersattning.moms_pct, 0)}% moms)</div>
             </div>
             <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-sm">
               <span>
@@ -511,6 +549,82 @@ export function AnalysisResults({
               {formatOre(data.sjalvkonsumtion.spot_sek_per_kwh)} + energiskatt {formatOre(data.sjalvkonsumtion.energiskatt_sek_per_kwh)} + nätavgift{" "}
               {formatOre(data.sjalvkonsumtion.natavgift_sek_per_kwh)}.
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Quarters exported at a loss */}
+      {data.forlust_export && (data.forlust_export.antal ?? 0) > 0 && (
+        <Card className="border-destructive/30">
+          <CardHeader className="pb-2">
+            <div className="flex items-center gap-2">
+              <TrendingDownIcon className="h-5 w-5 text-destructive" />
+              <CardTitle className="text-lg">
+                {data.forlust_export.intervall_minuter === 15 ? "Kvartar" : "Tillfällen"} du exporterade med förlust
+              </CardTitle>
+            </div>
+            <CardDescription>
+              Tillfällen då ditt effektiva pris var under noll – du betalade för att exportera.
+              Brytpunkt: spotpris under {formatOre(data.forlust_export.troskel_spot_sek_per_kwh)}/kWh.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 sm:grid-cols-3 mb-4">
+              <div>
+                <div className="text-2xl font-bold font-mono text-destructive">
+                  {formatNumber(data.forlust_export.antal)}
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {data.forlust_export.intervall_minuter === 15 ? "kvartar" : "tillfällen"} med förlust
+                </p>
+              </div>
+              <div>
+                <div className="text-2xl font-bold font-mono text-destructive">
+                  {formatCurrency(data.forlust_export.total_forlust_sek)}
+                </div>
+                <p className="text-sm text-muted-foreground">uppskattad total förlust</p>
+              </div>
+              <div>
+                <div className="text-2xl font-bold font-mono">
+                  {formatNumber(data.forlust_export.total_kwh, 1)} <span className="text-base">kWh</span>
+                </div>
+                <p className="text-sm text-muted-foreground">exporterat med förlust</p>
+              </div>
+            </div>
+
+            <LossChart serie={data.forlust_export.serie} />
+
+            {data.forlust_export.poster && data.forlust_export.poster.length > 0 && (
+              <div className="mt-4">
+                <p className="text-sm text-muted-foreground mb-2">
+                  Värst drabbade tillfällen{data.forlust_export.poster.length < (data.forlust_export.antal ?? 0) ? ` (topp ${data.forlust_export.poster.length})` : ""}:
+                </p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border/50 text-left text-muted-foreground">
+                        <th className="py-2 pr-4 font-medium">Tidpunkt</th>
+                        <th className="py-2 pr-4 font-medium text-right">Spotpris</th>
+                        <th className="py-2 pr-4 font-medium text-right">Effektivt pris</th>
+                        <th className="py-2 pr-4 font-medium text-right">Volym</th>
+                        <th className="py-2 font-medium text-right">Förlust</th>
+                      </tr>
+                    </thead>
+                    <tbody className="font-mono">
+                      {data.forlust_export.poster.map((row, i) => (
+                        <tr key={i} className="border-b border-border/30">
+                          <td className="py-1.5 pr-4 font-sans">{formatLossTime(row.start)}</td>
+                          <td className="py-1.5 pr-4 text-right">{formatOre(row.spot_sek_per_kwh)}</td>
+                          <td className="py-1.5 pr-4 text-right text-destructive">{formatOre(row.effektivt_pris_sek_per_kwh)}</td>
+                          <td className="py-1.5 pr-4 text-right">{formatNumber(row.kwh, 2)} kWh</td>
+                          <td className="py-1.5 text-right text-destructive">{formatCurrency(row.forlust_sek)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

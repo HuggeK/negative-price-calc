@@ -119,29 +119,33 @@ console.log("Test 5: export compensation + self-consumption");
     { start: base + H, end: base + 2 * H, sekPerKwh: 2.0, eurPerKwh: 0 },
   ];
   // realized spot = (2*1 + 2*2)/4 = 1.5 ; spot revenue = 6 ; total = 4 kWh
+  // elnät: 5 öre fast + 10% rörlig ; elhandel: 10 öre fast + 0% rörlig
   const r = analyze(prod, prices, {
     vatRate: 25,
-    exportLossPct: 10,
-    exportFixed: 0.1, // 10 öre/kWh
+    gridFixed: 0.05,
+    gridPct: 10,
+    traderFixed: 0.1,
+    traderPct: 0,
     selfEnergyTax: 0.4,
     selfGridFee: 0.6,
   });
 
   const e = r.exportersattning;
   approx(e.spot_sek_per_kwh, 1.5, "export: spot");
-  approx(e.forlustersattning_sek_per_kwh, 0.15, "export: loss comp (10% of 1.5)");
-  approx(e.fast_del_sek_per_kwh, 0.1, "export: fixed part");
-  approx(e.pris_innan_moms_sek_per_kwh, 1.75, "export: price before VAT");
-  approx(e.effektivt_pris_sek_per_kwh, 2.1875, "export: effective price (incl 25% VAT)");
+  approx(e.elnat_rorlig_sek_per_kwh, 0.15, "export: elnät rörlig (10% of 1.5)");
+  approx(e.elnat_total_sek_per_kwh, 0.2, "export: elnät total (0.05 + 0.15)");
+  approx(e.elhandel_total_sek_per_kwh, 0.1, "export: elhandel total (0.10 fast)");
+  approx(e.pris_innan_moms_sek_per_kwh, 1.8, "export: price before VAT");
+  approx(e.effektivt_pris_sek_per_kwh, 2.25, "export: effective price (incl 25% VAT)");
   approx(e.spot_total_sek, 6, "export: spot total");
-  approx(e.effektiv_total_sek, 8.75, "export: effective total");
-  approx(e.skillnad_mot_spot_sek, 2.75, "export: uplift vs spot");
+  approx(e.effektiv_total_sek, 9, "export: effective total");
+  approx(e.skillnad_mot_spot_sek, 3, "export: uplift vs spot");
 
   const s = r.sjalvkonsumtion;
   approx(s.spot_sek_per_kwh, 1.5, "self: spot");
   approx(s.varde_self_sek_per_kwh, 3.125, "self: value (spot+tax+fee)*1.25");
-  approx(s.export_varde_sek_per_kwh, 2.1875, "self: export reference price");
-  approx(s.okning_vs_export_sek_per_kwh, 0.9375, "self: increment vs export");
+  approx(s.export_varde_sek_per_kwh, 2.25, "self: export reference price");
+  approx(s.okning_vs_export_sek_per_kwh, 0.875, "self: increment vs export");
 }
 
 // --- Test 5b: blocks are omitted when their inputs are absent ---
@@ -188,6 +192,36 @@ console.log("Test 7: hourly file flagged as not 15-min");
   const a = assessResolution(parsed);
   eq(a.isQuarterHour, false, "assessResolution.isQuarterHour");
   eq(a.level, "warning", "assessResolution.level");
+}
+
+// --- Test 8: quarters exported at a loss (offset shifts the threshold) ---
+console.log("Test 8: export-at-a-loss quarters");
+{
+  const Q = H / 4;
+  const prod = [{ start: base, end: base + H, kwh: 4 }]; // 1 kWh per quarter
+  const prices = [
+    { start: base + 0 * Q, end: base + 1 * Q, sekPerKwh: 1.0, eurPerKwh: 0 },
+    { start: base + 1 * Q, end: base + 2 * Q, sekPerKwh: -0.5, eurPerKwh: 0 },
+    { start: base + 2 * Q, end: base + 3 * Q, sekPerKwh: 0.05, eurPerKwh: 0 },
+    { start: base + 3 * Q, end: base + 4 * Q, sekPerKwh: 1.0, eurPerKwh: 0 },
+  ];
+  // 10 öre avdrag from the trader (no loss%, no VAT): effective = spot - 0.10.
+  // Break-even spot = 0.10; q2 (-0.5) and q3 (0.05) fall below it -> losses.
+  const r = analyze(prod, prices, {
+    productionGranularity: "hourly",
+    priceGranularity: "15min",
+    traderFixed: -0.1,
+  });
+  const f = r.forlust_export;
+  approx(f.antal, 2, "loss: number of quarters");
+  approx(f.intervall_minuter, 15, "loss: interval minutes (kvart)");
+  approx(f.troskel_spot_sek_per_kwh, 0.1, "loss: spot break-even threshold");
+  approx(f.total_kwh, 2, "loss: kWh exported at a loss");
+  approx(f.total_forlust_sek, 0.65, "loss: total loss SEK (0.60 + 0.05)");
+  approx(f.poster.length, 2, "loss: table rows");
+  approx(f.poster[0].forlust_sek, 0.6, "loss: worst row loss (sorted desc)");
+  approx(f.poster[0].effektivt_pris_sek_per_kwh, -0.6, "loss: worst row effective price");
+  eq(f.serie.length, 1, "loss: one day in series");
 }
 
 console.log(failures === 0 ? "\nALL PASSED" : `\n${failures} FAILURE(S)`);

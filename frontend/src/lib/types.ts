@@ -82,9 +82,16 @@ export interface AnalysisResult {
   exportersattning?: {
     moms_pct: number;
     spot_sek_per_kwh: number;
-    forlust_pct: number;
-    forlustersattning_sek_per_kwh: number;
-    fast_del_sek_per_kwh: number;
+    /** Elnätsbolag (grid): fixed + variable (% of spot) förlustersättning. */
+    elnat_fast_sek_per_kwh: number;
+    elnat_pct: number;
+    elnat_rorlig_sek_per_kwh: number;
+    elnat_total_sek_per_kwh: number;
+    /** Elhandelsbolag (trader): fixed + variable (% of spot) påslag/avdrag. */
+    elhandel_fast_sek_per_kwh: number;
+    elhandel_pct: number;
+    elhandel_rorlig_sek_per_kwh: number;
+    elhandel_total_sek_per_kwh: number;
     pris_innan_moms_sek_per_kwh: number;
     effektivt_pris_sek_per_kwh: number;
     spot_total_sek: number;
@@ -104,6 +111,30 @@ export interface AnalysisResult {
     varde_self_sek_per_kwh: number;
     export_varde_sek_per_kwh: number;
     okning_vs_export_sek_per_kwh: number;
+  };
+  /**
+   * Quarters exported "at a loss": the effective export price (after offsets + VAT) was
+   * below zero, i.e. you paid to export. Present when any such interval exists.
+   */
+  forlust_export?: {
+    /** Number of intervals (quarters) exported at a loss. */
+    antal: number;
+    /** Nominal interval length in minutes (15 = quarters). */
+    intervall_minuter: number;
+    /** Spot price (SEK/kWh) below which export becomes a loss, given the offsets. */
+    troskel_spot_sek_per_kwh: number;
+    total_kwh: number;
+    total_forlust_sek: number;
+    /** Worst occasions (up to 50), for the table. */
+    poster: Array<{
+      start: string;
+      spot_sek_per_kwh: number;
+      effektivt_pris_sek_per_kwh: number;
+      kwh: number;
+      forlust_sek: number;
+    }>;
+    /** Daily total loss (SEK), for the chart. */
+    serie: Array<{ date: string; forlust_sek: number }>;
   };
   /** Grid-connection (main fuse) peak analysis. Only present when a fuse size is given. */
   natanslutning?: {

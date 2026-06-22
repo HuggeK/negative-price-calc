@@ -110,8 +110,10 @@ class PriceAnalyzer:
         fuse_amps: float = None,
         voltage: float = 400.0,
         vat_rate: float = None,
-        export_fixed: float = None,
-        export_loss_pct: float = None,
+        grid_fixed: float = None,
+        grid_pct: float = None,
+        trader_fixed: float = None,
+        trader_pct: float = None,
         self_energy_tax: float = None,
         self_grid_fee: float = None,
     ) -> Dict[str, Any]:
@@ -125,18 +127,20 @@ class PriceAnalyzer:
             voltage (float): Line voltage for the 3-phase power calc (default 400 V).
             vat_rate (float, optional): VAT, fraction (0.25) or percent (25). Used by both
                 valuations below.
-            export_fixed (float, optional): Export fixed surcharge/deduction in SEK/kWh
-                (may be negative). Adds the export-compensation block.
-            export_loss_pct (float, optional): Export loss compensation as a percentage of
-                the spot price (e.g. 5). Adds the export-compensation block.
+            grid_fixed (float, optional): Elnätsbolag fixed förlustersättning in SEK/kWh.
+            grid_pct (float, optional): Elnätsbolag variable förlustersättning, % of spot.
+            trader_fixed (float, optional): Elhandelsbolag fixed påslag/avdrag in SEK/kWh
+                (may be negative).
+            trader_pct (float, optional): Elhandelsbolag variable påslag/avdrag, % of spot.
             self_energy_tax (float, optional): Energy tax in SEK/kWh. Adds the
                 self-consumption block.
             self_grid_fee (float, optional): Grid/transmission fee in SEK/kWh. Adds the
                 self-consumption block.
 
         Returns:
-            Dict[str, Any]: Analysis results with statistics and insights.
-            Mirrors the TypeScript engine's export-compensation + self-consumption model.
+            Dict[str, Any]: Analysis results with statistics and insights. Mirrors the
+            TypeScript engine's export-compensation, self-consumption and export-at-loss
+            model.
         """
         analysis = {}
 
@@ -274,9 +278,10 @@ class PriceAnalyzer:
                 'peaks': int(maxed.sum()),
             }
 
-        # Export-compensation + self-consumption valuations. Both use the energy-weighted
-        # average spot during production (realized_spot); the formulas are affine in spot,
-        # so this equals a per-interval computation. Mirrors analyze.ts.
+        # Export-compensation + self-consumption valuations, split per company (elnät /
+        # elhandel), each with a fixed (SEK/kWh) and variable (% of spot) part. Uses the
+        # energy-weighted average spot (affine, so equals a per-interval result). Mirrors
+        # analyze.ts.
         total_kwh = float(analysis['production_total'])
         spot_total = float(analysis['total_export_value_sek'])
         realized_spot = spot_total / total_kwh if total_kwh else 0.0
@@ -287,20 +292,34 @@ class PriceAnalyzer:
             return v / 100.0 if v > 1 else v
 
         vat = _norm_vat(vat_rate)
-        loss_pct = export_loss_pct or 0.0
-        fixed = export_fixed or 0.0
+        g_fixed = grid_fixed or 0.0
+        g_pct = grid_pct or 0.0
+        t_fixed = trader_fixed or 0.0
+        t_pct = trader_pct or 0.0
 
-        if total_kwh > 0 and any(x is not None for x in (vat_rate, export_fixed, export_loss_pct)):
-            loss_comp = realized_spot * (loss_pct / 100.0)
-            before_vat = realized_spot + loss_comp + fixed
+        def _effective(spot):
+            before = spot + g_fixed + spot * (g_pct / 100.0) + t_fixed + spot * (t_pct / 100.0)
+            return before * (1 + vat)
+
+        if total_kwh > 0 and any(x is not None for x in (vat_rate, grid_fixed, grid_pct, trader_fixed, trader_pct)):
+            elnat_var = realized_spot * (g_pct / 100.0)
+            elnat_total = g_fixed + elnat_var
+            elhandel_var = realized_spot * (t_pct / 100.0)
+            elhandel_total = t_fixed + elhandel_var
+            before_vat = realized_spot + elnat_total + elhandel_total
             effective = before_vat * (1 + vat)
             effective_total = effective * total_kwh
             analysis['export_compensation'] = {
                 'vat_pct': round(vat * 100, 1),
                 'spot_sek_per_kwh': round(realized_spot, 4),
-                'loss_pct': round(loss_pct, 2),
-                'loss_compensation_sek_per_kwh': round(loss_comp, 4),
-                'fixed_sek_per_kwh': round(fixed, 4),
+                'elnat_fixed_sek_per_kwh': round(g_fixed, 4),
+                'elnat_pct': round(g_pct, 2),
+                'elnat_variable_sek_per_kwh': round(elnat_var, 4),
+                'elnat_total_sek_per_kwh': round(elnat_total, 4),
+                'elhandel_fixed_sek_per_kwh': round(t_fixed, 4),
+                'elhandel_pct': round(t_pct, 2),
+                'elhandel_variable_sek_per_kwh': round(elhandel_var, 4),
+                'elhandel_total_sek_per_kwh': round(elhandel_total, 4),
                 'price_before_vat_sek_per_kwh': round(before_vat, 4),
                 'effective_price_sek_per_kwh': round(effective, 4),
                 'spot_total_sek': round(spot_total, 2),
@@ -312,7 +331,7 @@ class PriceAnalyzer:
             tax = self_energy_tax or 0.0
             fee = self_grid_fee or 0.0
             value_self = (realized_spot + tax + fee) * (1 + vat)
-            export_value = (realized_spot + realized_spot * (loss_pct / 100.0) + fixed) * (1 + vat)
+            export_value = _effective(realized_spot)
             analysis['self_consumption'] = {
                 'vat_pct': round(vat * 100, 1),
                 'spot_sek_per_kwh': round(realized_spot, 4),
@@ -322,6 +341,42 @@ class PriceAnalyzer:
                 'export_value_sek_per_kwh': round(export_value, 4),
                 'increment_vs_export_sek_per_kwh': round(value_self - export_value, 4),
             }
+
+        # Quarters exported at a loss: effective export price below zero while exporting.
+        if total_kwh > 0:
+            price_sek = merged_df['price_sek_per_kwh']
+            prod_kwh = merged_df['production_kwh']
+            eff_price = (price_sek + g_fixed + price_sek * (g_pct / 100.0)
+                         + t_fixed + price_sek * (t_pct / 100.0)) * (1 + vat)
+            loss_mask = (eff_price < 0) & (prod_kwh > 0)
+            loss_count = int(loss_mask.sum())
+            if loss_count > 0:
+                loss_df = merged_df[loss_mask].copy()
+                loss_df['eff_price'] = eff_price[loss_mask]
+                loss_df['loss_sek'] = -(loss_df['production_kwh'] * loss_df['eff_price'])
+                total_pct_frac = (g_pct + t_pct) / 100.0
+                total_fixed = g_fixed + t_fixed
+                break_even = -total_fixed / (1 + total_pct_frac) if (1 + total_pct_frac) != 0 else 0.0
+                step_min = float(interval_hours.median()) * 60 if len(interval_hours) else 60.0
+                worst = loss_df.sort_values('loss_sek', ascending=False).head(50)
+                rows = [{
+                    'start': idx.isoformat(),
+                    'spot_sek_per_kwh': round(float(row['price_sek_per_kwh']), 4),
+                    'effective_price_sek_per_kwh': round(float(row['eff_price']), 4),
+                    'kwh': round(float(row['production_kwh']), 3),
+                    'loss_sek': round(float(row['loss_sek']), 2),
+                } for idx, row in worst.iterrows()]
+                daily_loss = loss_df.groupby(loss_df.index.date)['loss_sek'].sum()
+                series = [{'date': d.isoformat(), 'loss_sek': round(float(v), 2)} for d, v in daily_loss.items()]
+                analysis['export_at_loss'] = {
+                    'count': loss_count,
+                    'interval_minutes': round(step_min, 1),
+                    'break_even_spot_sek_per_kwh': round(break_even, 4),
+                    'total_kwh': round(float(loss_df['production_kwh'].sum()), 3),
+                    'total_loss_sek': round(float(loss_df['loss_sek'].sum()), 2),
+                    'rows': rows,
+                    'series': series,
+                }
 
         return analysis
     

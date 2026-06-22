@@ -41,7 +41,7 @@ node --experimental-strip-types frontend/scripts/test-analyze.mjs
 - `lib/` — the client-side engine:
   - `parseProduction.ts` — CSV parsing (Swedish formats: semicolon, decimal comma, BOM; hourly/15-min/daily) + `assessResolution()` 15-min validation
   - `prices.ts` — **elprisetjustnu.se** price client (CORS, no key, SEK/kWh, native 15-min)
-  - `analyze.ts` — **interval-aware** analysis via overlap allocation; fuse flat-peak + export-compensation (elnät förlustersättning %, elhandel påslag/avdrag, VAT) + self-consumption valuation
+  - `analyze.ts` — **interval-aware** analysis via overlap allocation; fuse flat-peak + export-compensation (elnätsbolag + elhandelsbolag, each fixed öre/kWh + variable % of spot, then VAT) + self-consumption valuation + per-quarter export-at-loss (count, daily series, worst-occasions table)
   - `aiSummary.ts` — optional Swedish AI summary via OpenRouter (browser, user-supplied key)
 
 ### Python library / CLI — `python/core/`, `python/cli/`

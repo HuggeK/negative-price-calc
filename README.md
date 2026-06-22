@@ -17,7 +17,8 @@ When you have solar panels you sell excess electricity to the grid. But spot pri
 - 💸 **Detect negative-price periods** — see when exporting cost you money
 - ⏱️ **Catch sub-hour peaks** — full **15-minute** resolution (the Swedish market moved to 15-min on 2025-10-01)
 - 🔌 **Check your grid connection** — how long export was pinned at your main-fuse limit ("flat peaks")
-- 💱 **See your real export pay** — effective compensation = (spot + förlustersättning [%·spot] + fast påslag/avdrag) × (1 + moms)
+- 💱 **See your real export pay** — effective compensation from both your **elnätsbolag** (förlustersättning) and **elhandelsbolag** (påslag/avdrag), each as a fixed (öre/kWh) + variable (% of spot) part, × (1 + moms)
+- 📉 **Find loss-making quarters** — the quarters where your effective price went below zero (you paid to export), with a chart and a table of when, the price, the volume and the estimated loss in kronor
 - 🏠 **Value self-consumption** — what a kWh is worth used yourself vs. exported, as a separate section
 - 🤖 **Get an AI summary** (optional) — Swedish-language, generated in your browser with your own key
 - 💾 **Export results** — download JSON or CSV
@@ -29,7 +30,8 @@ When you have solar panels you sell excess electricity to the grid. But spot pri
 - **⏱️ Interval-aware** — correctly handles any mix of hourly / 15-minute / daily data via overlap allocation
 - **🇸🇪 Swedish bidding zones** — SE1–SE4
 - **🔌 Grid-connection analysis** — main-fuse flat-peak detection (3-phase, 400 V)
-- **💱 Export compensation** — fixed surcharge/deduction + loss compensation (% of spot) + VAT
+- **💱 Export compensation** — per-company (elnät + elhandel), each fixed (öre/kWh) + variable (% of spot) + VAT
+- **📉 Loss-making quarters** — count, chart and table of quarters exported below the break-even price
 - **🏠 Self-consumption valuation** — value of self-use vs. exporting, in a separate section
 - **🪙 Familiar units** — inputs in öre/kWh; results show kronor for totals and öre for per-kWh
 - **🤖 Optional AI summary** — via OpenRouter, using a key you supply (stored only in your browser)
@@ -40,7 +42,7 @@ When you have solar panels you sell excess electricity to the grid. But spot pri
 1. **Get your export data** — log in to your grid/energy company's portal and export your meter data as CSV.
 2. **Upload the file** — **15-minute (quarter-hour) data is recommended**; hourly and daily are also detected automatically. No file of your own? Click **Prova med exempeldata** to run a bundled 15-minute sample.
 3. **Choose your bidding zone** — SE1–SE4.
-4. **(Optional) settings** — main fuse size (A), VAT %, export compensation (fixed öre/kWh ± and loss % of spot), and self-consumption inputs (energy tax + grid fee, in öre/kWh). AI summary toggle is off by default.
+4. **(Optional) settings** — main fuse size (A), VAT %, export compensation per company (elnätsbolag and elhandelsbolag, each a fixed öre/kWh + variable % of spot), and self-consumption inputs (energy tax + grid fee, in öre/kWh). AI summary toggle is off by default.
 5. **Click "Analysera"** — the report appears directly in the browser, labelled with the data resolution (kvart / 15-min). Download it as JSON or CSV.
 
 Sample files live in [`python/data/samples/`](python/data/samples/); the web app's bundled example is [`frontend/public/exempel-15min.csv`](frontend/public/exempel-15min.csv). The browser app reads **CSV** (export Excel files as CSV first); the Python CLI also reads Excel.
@@ -51,7 +53,8 @@ Sample files live in [`python/data/samples/`](python/data/samples/); the web app
 - **Negative-price exposure** — hours, kWh and cost of exporting at negative prices
 - **Timing discount** — how far below the market average you were paid
 - **Grid connection** — peak power, and time/energy at the main-fuse limit (when a fuse size is given)
-- **Export compensation** — effective price/kWh and total you actually get paid (spot + loss% + fixed, × VAT)
+- **Export compensation** — effective price/kWh and total you actually get paid, split per company (elnät + elhandel), × VAT
+- **Loss-making quarters** — how many quarters you exported below break-even, total estimated loss (kr), a daily chart and a table of the worst occasions
 - **Self-consumption value** — worth of a kWh used yourself vs. exported (when energy tax / grid fee are given)
 - **Monthly breakdown** chart
 

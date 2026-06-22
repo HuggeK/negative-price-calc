@@ -11,6 +11,9 @@ import type { AnalysisResult, Granularity, PriceInterval, ProductionInterval } f
 
 const MS_PER_HOUR = 3_600_000;
 
+/** Nominal interval length (minutes) per granularity — used to label "kvartar" etc. */
+const GRAN_MINUTES: Record<string, number> = { "15min": 15, hourly: 60, daily: 1440, unknown: 60 };
+
 function monthKey(ms: number): string {
   return new Date(ms).toISOString().slice(0, 7); // YYYY-MM (wall-clock)
 }
@@ -38,10 +41,14 @@ export interface AnalyzeOptions {
   voltage?: number;
   /** VAT rate, accepted as a fraction (0.25) or a percentage (25). Used by both valuations. */
   vatRate?: number;
-  /** Export: fixed surcharge/deduction in SEK/kWh (may be negative). */
-  exportFixed?: number;
-  /** Export: loss compensation as a percentage of the spot price (e.g. 5 for 5%). */
-  exportLossPct?: number;
+  /** Elnätsbolag (grid): fixed förlustersättning in SEK/kWh (may be negative). */
+  gridFixed?: number;
+  /** Elnätsbolag (grid): variable förlustersättning as a percentage of spot (e.g. 5). */
+  gridPct?: number;
+  /** Elhandelsbolag (trader): fixed påslag/avdrag in SEK/kWh (may be negative). */
+  traderFixed?: number;
+  /** Elhandelsbolag (trader): variable påslag/avdrag as a percentage of spot. */
+  traderPct?: number;
   /** Self-consumption: energy tax in SEK/kWh (avoided when self-consuming). */
   selfEnergyTax?: number;
   /** Self-consumption: grid/transmission fee in SEK/kWh (avoided when self-consuming). */
@@ -55,21 +62,26 @@ function normalizeVat(v: number | undefined): number {
 }
 
 /**
- * Effective export price per kWh:
- *   (spot + förlustersättning[loss% of spot] + fast påslag/avdrag) × (1 + moms).
- * Used both for the export-compensation block and as the comparison baseline for
- * self-consumption. Affine in spot, so applying it to the energy-weighted average spot
- * gives the same per-kWh result as a per-interval computation.
+ * Effective export price per kWh, combining both companies that pay you:
+ *   spot
+ *   + elnätsbolag:   gridFixed + spot·gridPct%   (förlustersättning, fast + rörlig)
+ *   + elhandelsbolag: traderFixed + spot·traderPct% (påslag/avdrag, fast + rörlig)
+ *   then × (1 + moms).
+ * Used for the export-compensation block and as the self-consumption baseline. Affine in
+ * spot, so applying it to the energy-weighted average spot equals a per-interval result.
  */
-function effectiveExportPrice(spotWavg: number, opts: AnalyzeOptions): number {
+function effectiveExportPrice(spot: number, opts: AnalyzeOptions): number {
   const vat = normalizeVat(opts.vatRate);
-  const lossFrac = (opts.exportLossPct ?? 0) / 100;
-  const fixed = opts.exportFixed ?? 0;
-  const beforeVat = spotWavg + spotWavg * lossFrac + fixed;
+  const gridFixed = opts.gridFixed ?? 0;
+  const gridPct = opts.gridPct ?? 0;
+  const traderFixed = opts.traderFixed ?? 0;
+  const traderPct = opts.traderPct ?? 0;
+  const beforeVat =
+    spot + gridFixed + spot * (gridPct / 100) + traderFixed + spot * (traderPct / 100);
   return beforeVat * (1 + vat);
 }
 
-/** Export-compensation block (what you actually get paid for exported energy). */
+/** Export-compensation block (what you actually get paid), split per company. */
 function analyzeExportCompensation(
   spotWavg: number,
   spotTotal: number,
@@ -77,18 +89,30 @@ function analyzeExportCompensation(
   opts: AnalyzeOptions
 ): NonNullable<AnalysisResult["exportersattning"]> {
   const vat = normalizeVat(opts.vatRate);
-  const lossPct = opts.exportLossPct ?? 0;
-  const fixed = opts.exportFixed ?? 0;
-  const lossComp = spotWavg * (lossPct / 100);
-  const beforeVat = spotWavg + lossComp + fixed;
+  const gridFixed = opts.gridFixed ?? 0;
+  const gridPct = opts.gridPct ?? 0;
+  const traderFixed = opts.traderFixed ?? 0;
+  const traderPct = opts.traderPct ?? 0;
+
+  const elnatRorlig = spotWavg * (gridPct / 100);
+  const elnatTotal = gridFixed + elnatRorlig;
+  const elhandelRorlig = spotWavg * (traderPct / 100);
+  const elhandelTotal = traderFixed + elhandelRorlig;
+
+  const beforeVat = spotWavg + elnatTotal + elhandelTotal;
   const effective = beforeVat * (1 + vat);
   const effectiveTotal = effective * totalKwh;
   return {
     moms_pct: round(vat * 100, 1),
     spot_sek_per_kwh: round(spotWavg, 4),
-    forlust_pct: round(lossPct, 2),
-    forlustersattning_sek_per_kwh: round(lossComp, 4),
-    fast_del_sek_per_kwh: round(fixed, 4),
+    elnat_fast_sek_per_kwh: round(gridFixed, 4),
+    elnat_pct: round(gridPct, 2),
+    elnat_rorlig_sek_per_kwh: round(elnatRorlig, 4),
+    elnat_total_sek_per_kwh: round(elnatTotal, 4),
+    elhandel_fast_sek_per_kwh: round(traderFixed, 4),
+    elhandel_pct: round(traderPct, 2),
+    elhandel_rorlig_sek_per_kwh: round(elhandelRorlig, 4),
+    elhandel_total_sek_per_kwh: round(elhandelTotal, 4),
     pris_innan_moms_sek_per_kwh: round(beforeVat, 4),
     effektivt_pris_sek_per_kwh: round(effective, 4),
     spot_total_sek: round(spotTotal, 2),
@@ -213,6 +237,26 @@ export function analyze(
     return m;
   };
 
+  // Effective export price per kWh for a given spot, using the configured offsets
+  // (förlustersättning % + fast påslag/avdrag, then VAT). A quarter is "exported at a
+  // loss" when this is below zero — you pay to export. Records each such segment.
+  const vatFrac = normalizeVat(opts.vatRate);
+  const totalPctFrac = ((opts.gridPct ?? 0) + (opts.traderPct ?? 0)) / 100;
+  const totalFixed = (opts.gridFixed ?? 0) + (opts.traderFixed ?? 0);
+  const effPrice = (spot: number) => (spot + spot * totalPctFrac + totalFixed) * (1 + vatFrac);
+
+  interface LossSeg {
+    start: number;
+    spot: number;
+    eff: number;
+    kwh: number;
+    loss: number; // positive money paid (SEK)
+  }
+  const lossSegs: LossSeg[] = [];
+  let lossKwh = 0;
+  let lossSek = 0;
+  const lossByDay = new Map<string, number>();
+
   // Sweep: lo is the first price interval that could overlap the current production row.
   let lo = 0;
   for (const p of sortedProd) {
@@ -252,6 +296,20 @@ export function analyze(
         m.negative_value_sek += value;
         if (energy > 0) m.negative_hours += hours;
       }
+
+      // Quarters exported at a loss: effective price below zero while exporting.
+      if (energy > 0) {
+        const eff = effPrice(q.sekPerKwh);
+        if (eff < 0) {
+          const segStart = Math.max(p.start, q.start);
+          const lossAbs = -(energy * eff); // positive money paid
+          lossSegs.push({ start: segStart, spot: q.sekPerKwh, eff, kwh: energy, loss: lossAbs });
+          lossKwh += energy;
+          lossSek += lossAbs;
+          const d = dateStr(segStart);
+          lossByDay.set(d, (lossByDay.get(d) ?? 0) + lossAbs);
+        }
+      }
     }
   }
 
@@ -287,8 +345,43 @@ export function analyze(
       ? analyzeFusePeaks(sortedProd, opts.fuseAmps, opts.voltage ?? 400)
       : undefined;
 
+  // Quarters exported at a loss (effective price < 0), with the spot break-even threshold,
+  // a daily loss series for charting, and the worst occasions for a table.
+  const segMinutes = Math.min(
+    GRAN_MINUTES[opts.productionGranularity ?? "unknown"] ?? 60,
+    GRAN_MINUTES[opts.priceGranularity ?? "unknown"] ?? 60
+  );
+  const breakEvenSpot = 1 + totalPctFrac !== 0 ? -totalFixed / (1 + totalPctFrac) : 0;
+  const forlust_export =
+    lossSegs.length > 0
+      ? {
+          antal: lossSegs.length,
+          intervall_minuter: segMinutes,
+          troskel_spot_sek_per_kwh: round(breakEvenSpot, 4),
+          total_kwh: round(lossKwh, 3),
+          total_forlust_sek: round(lossSek, 2),
+          poster: [...lossSegs]
+            .sort((a, b) => b.loss - a.loss)
+            .slice(0, 50)
+            .map((s) => ({
+              start: new Date(s.start).toISOString(),
+              spot_sek_per_kwh: round(s.spot, 4),
+              effektivt_pris_sek_per_kwh: round(s.eff, 4),
+              kwh: round(s.kwh, 3),
+              forlust_sek: round(s.loss, 2),
+            })),
+          serie: [...lossByDay.entries()]
+            .sort((a, b) => a[0].localeCompare(b[0]))
+            .map(([date, loss]) => ({ date, forlust_sek: round(loss, 2) })),
+        }
+      : undefined;
+
   const hasExportInputs =
-    opts.vatRate != null || opts.exportFixed != null || opts.exportLossPct != null;
+    opts.vatRate != null ||
+    opts.gridFixed != null ||
+    opts.gridPct != null ||
+    opts.traderFixed != null ||
+    opts.traderPct != null;
   const exportersattning =
     hasExportInputs && totalMatchedKwh > 0
       ? analyzeExportCompensation(realizedPrice, revenueSek, totalMatchedKwh, opts)
@@ -327,6 +420,7 @@ export function analyze(
     aggregates: { monthly },
     exportersattning,
     sjalvkonsumtion,
+    forlust_export,
     natanslutning,
     meta: {
       price_granularity: opts.priceGranularity ?? "unknown",

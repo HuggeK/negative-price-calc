@@ -20,12 +20,18 @@ changes there **first**, then mirror them here and add a test. Concretely:
 | `parseProduction.ts` `assessResolution()` | `core/intervals.py` `assess_resolution()` |
 | granularity helpers | `core/intervals.py` |
 
-**Canonical valuation:** the export-compensation `(spot + loss%·spot + fixed)·(1+VAT)`
-and self-consumption `(spot + energy_tax + grid_fee)·(1+VAT)` model lives in
-`core/price_analyzer.analyze_data()` (params `vat_rate`, `export_fixed`,
-`export_loss_pct`, `self_energy_tax`, `self_grid_fee`). Note: `cli/main.py`'s
-`build_storytelling_payload` still carries an older inline self-consumption block
-(export baseline = spot only) and is a follow-up to align to `analyze_data`.
+**Canonical valuation** lives in `core/price_analyzer.analyze_data()`:
+- Export compensation per company: `(spot + grid_fixed + spot·grid_pct% + trader_fixed +
+  spot·trader_pct%) · (1+VAT)` (params `vat_rate`, `grid_fixed`, `grid_pct`,
+  `trader_fixed`, `trader_pct`).
+- Self-consumption: `(spot + energy_tax + grid_fee)·(1+VAT)` vs. the effective export price
+  (params `self_energy_tax`, `self_grid_fee`).
+- Export-at-loss: quarters where the effective price < 0 (`export_at_loss` block: count,
+  break-even spot, daily series, worst-occasions rows).
+
+Note: `cli/main.py`'s `build_storytelling_payload` still carries an older inline
+self-consumption block (export baseline = spot only) and is a follow-up to align to
+`analyze_data`.
 
 ## Commands (run from `python/`)
 

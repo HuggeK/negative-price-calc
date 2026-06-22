@@ -125,11 +125,14 @@ def test_export_compensation_and_self_consumption():
     production = pd.DataFrame({"production_kwh": [2.0, 2.0]}, index=idx)
     merged = PriceAnalyzer.merge_data(prices, production, eur_sek_rate=10.0)
 
+    # elnät: 5 öre fast + 10% rörlig ; elhandel: 10 öre fast + 0% rörlig
     a = PriceAnalyzer.analyze_data(
         merged,
         vat_rate=25,
-        export_loss_pct=10,
-        export_fixed=0.1,
+        grid_fixed=0.05,
+        grid_pct=10,
+        trader_fixed=0.1,
+        trader_pct=0,
         self_energy_tax=0.4,
         self_grid_fee=0.6,
     )
@@ -137,18 +140,38 @@ def test_export_compensation_and_self_consumption():
     # realized spot = (2*1 + 2*2)/4 = 1.5
     e = a["export_compensation"]
     assert e["spot_sek_per_kwh"] == pytest.approx(1.5)
-    assert e["loss_compensation_sek_per_kwh"] == pytest.approx(0.15)  # 10% of 1.5
-    assert e["fixed_sek_per_kwh"] == pytest.approx(0.1)
-    assert e["price_before_vat_sek_per_kwh"] == pytest.approx(1.75)
-    assert e["effective_price_sek_per_kwh"] == pytest.approx(2.1875)  # * 1.25
+    assert e["elnat_variable_sek_per_kwh"] == pytest.approx(0.15)  # 10% of 1.5
+    assert e["elnat_total_sek_per_kwh"] == pytest.approx(0.20)  # 0.05 + 0.15
+    assert e["elhandel_total_sek_per_kwh"] == pytest.approx(0.10)  # 0.10 fast
+    assert e["price_before_vat_sek_per_kwh"] == pytest.approx(1.80)
+    assert e["effective_price_sek_per_kwh"] == pytest.approx(2.25)  # * 1.25
     assert e["spot_total_sek"] == pytest.approx(6.0)
-    assert e["effective_total_sek"] == pytest.approx(8.75)
-    assert e["uplift_vs_spot_sek"] == pytest.approx(2.75)
+    assert e["effective_total_sek"] == pytest.approx(9.0)
+    assert e["uplift_vs_spot_sek"] == pytest.approx(3.0)
 
     s = a["self_consumption"]
     assert s["value_self_sek_per_kwh"] == pytest.approx(3.125)  # (1.5+0.4+0.6)*1.25
-    assert s["export_value_sek_per_kwh"] == pytest.approx(2.1875)
-    assert s["increment_vs_export_sek_per_kwh"] == pytest.approx(0.9375)
+    assert s["export_value_sek_per_kwh"] == pytest.approx(2.25)
+    assert s["increment_vs_export_sek_per_kwh"] == pytest.approx(0.875)
+
+
+def test_export_at_loss_quarters():
+    # 15-min prices [1.0, -0.5, 0.05, 1.0] SEK/kWh (eur_mwh /100 * 10), 1 kWh each quarter.
+    idx = pd.date_range("2025-11-03 00:00", periods=4, freq="15min")
+    prices = pd.DataFrame({"price_eur_per_mwh": [100.0, -50.0, 5.0, 100.0]}, index=idx)
+    production = pd.DataFrame({"production_kwh": [1.0, 1.0, 1.0, 1.0]}, index=idx)
+    merged = PriceAnalyzer.merge_data(prices, production, eur_sek_rate=10.0)
+
+    # 10 öre avdrag from the trader -> effective = spot - 0.10 ; break-even spot = 0.10.
+    a = PriceAnalyzer.analyze_data(merged, trader_fixed=-0.1)
+    f = a["export_at_loss"]
+    assert f["count"] == 2  # q2 (-0.5) and q3 (0.05) fall below break-even
+    assert f["break_even_spot_sek_per_kwh"] == pytest.approx(0.10)
+    assert f["total_kwh"] == pytest.approx(2.0)
+    assert f["total_loss_sek"] == pytest.approx(0.65)  # 0.60 + 0.05
+    assert f["interval_minutes"] == pytest.approx(15.0)
+    assert len(f["rows"]) == 2
+    assert f["rows"][0]["loss_sek"] == pytest.approx(0.60)  # worst first
 
 
 def test_valuation_blocks_omitted_without_inputs():

@@ -84,9 +84,13 @@ export default function Home() {
   const [selectedArea, setSelectedArea] = useState("SE_4");
   const [fuseAmps, setFuseAmps] = useState(""); // "" = Vet ej / skip
   const [vatRate, setVatRate] = useState("25");
-  // Export compensation (what you get paid for exported energy). Inputs in öre/kWh.
-  const [exportFixedOre, setExportFixedOre] = useState(""); // fast påslag/avdrag (±)
-  const [exportLossPct, setExportLossPct] = useState("5"); // förlustersättning, % av spot
+  // Export compensation, split per company. Fixed parts in öre/kWh, variable in % of spot.
+  // Elnätsbolag (grid): förlustersättning.
+  const [gridFixedOre, setGridFixedOre] = useState("");
+  const [gridPct, setGridPct] = useState("5");
+  // Elhandelsbolag (trader): påslag/avdrag.
+  const [traderFixedOre, setTraderFixedOre] = useState("");
+  const [traderPct, setTraderPct] = useState("");
   // Self-consumption valuation (separate, optional). Inputs in öre/kWh.
   const [energyTaxOre, setEnergyTaxOre] = useState("");
   const [gridFeeOre, setGridFeeOre] = useState("");
@@ -191,8 +195,10 @@ export default function Home() {
         priceGranularity: priceData.granularity,
         fuseAmps: fuseAmps ? Number(fuseAmps) : undefined,
         vatRate: numOrUndef(vatRate),
-        exportFixed: oreToSek(exportFixedOre),
-        exportLossPct: numOrUndef(exportLossPct),
+        gridFixed: oreToSek(gridFixedOre),
+        gridPct: numOrUndef(gridPct),
+        traderFixed: oreToSek(traderFixedOre),
+        traderPct: numOrUndef(traderPct),
         selfEnergyTax: oreToSek(energyTaxOre),
         selfGridFee: oreToSek(gridFeeOre),
       });
@@ -243,7 +249,7 @@ export default function Home() {
     } finally {
       setIsAnalyzing(false);
     }
-  }, [selectedFile, selectedArea, fuseAmps, vatRate, exportFixedOre, exportLossPct, energyTaxOre, gridFeeOre, aiInsights, aiKey, addLog]);
+  }, [selectedFile, selectedArea, fuseAmps, vatRate, gridFixedOre, gridPct, traderFixedOre, traderPct, energyTaxOre, gridFeeOre, aiInsights, aiKey, addLog]);
 
   // Run analysis immediately (report shown in-browser). Subscription is optional and,
   // when opted in, submitted best-effort without blocking the analysis.
@@ -417,21 +423,40 @@ export default function Home() {
                   <p className="text-xs text-muted-foreground">Används för både ersättningen nedan och värdet av självkonsumtion.</p>
                 </div>
 
-                {/* Export compensation: split into the two companies that pay you */}
-                <div className="space-y-3 border-t border-border/50 pt-4">
+                {/* Export compensation: two companies, each with a fixed + variable part */}
+                <div className="space-y-4 border-t border-border/50 pt-4">
                   <h4 className="text-sm font-medium text-foreground">Ersättning för exporterad el</h4>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="trader-offset">Elhandelsbolag: påslag/avdrag (öre/kWh)</Label>
-                      <Input id="trader-offset" inputMode="decimal" value={exportFixedOre} onChange={(e) => setExportFixedOre(e.target.value)} placeholder="t.ex. 8 eller -2" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="grid-loss">Elnätsbolag: förlustersättning (% av spot)</Label>
-                      <Input id="grid-loss" inputMode="decimal" value={exportLossPct} onChange={(e) => setExportLossPct(e.target.value)} placeholder="t.ex. 5" />
+
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Elnätsbolag (förlustersättning)</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="grid-fixed">Fast (öre/kWh)</Label>
+                        <Input id="grid-fixed" inputMode="decimal" value={gridFixedOre} onChange={(e) => setGridFixedOre(e.target.value)} placeholder="t.ex. 3" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="grid-pct">Rörlig (% av spot)</Label>
+                        <Input id="grid-pct" inputMode="decimal" value={gridPct} onChange={(e) => setGridPct(e.target.value)} placeholder="t.ex. 5" />
+                      </div>
                     </div>
                   </div>
+
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Elhandelsbolag (påslag/avdrag)</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="trader-fixed">Fast (öre/kWh)</Label>
+                        <Input id="trader-fixed" inputMode="decimal" value={traderFixedOre} onChange={(e) => setTraderFixedOre(e.target.value)} placeholder="t.ex. 8 eller -2" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="trader-pct">Rörlig (% av spot)</Label>
+                        <Input id="trader-pct" inputMode="decimal" value={traderPct} onChange={(e) => setTraderPct(e.target.value)} placeholder="t.ex. 0" />
+                      </div>
+                    </div>
+                  </div>
+
                   <p className="text-xs text-muted-foreground">
-                    Två separata ersättningar: ett fast påslag/avdrag från ditt <strong className="text-foreground">elhandelsbolag</strong> (öre/kWh, kan vara negativt) och förlustersättning från ditt <strong className="text-foreground">elnätsbolag</strong> (% av spotpris, ofta ca 5 %). Effektivt pris = (spot + förlustersättning + påslag/avdrag) × (1 + moms).
+                    Fasta delar anges i öre/kWh (kan vara negativa), rörliga delar i % av spotpriset. Effektivt pris = (spot + förlustersättning [elnät] + påslag/avdrag [elhandel]) × (1 + moms).
                   </p>
                 </div>
 
