@@ -53,6 +53,12 @@ export interface AnalyzeOptions {
   selfEnergyTax?: number;
   /** Self-consumption: grid/transmission fee in SEK/kWh (avoided when self-consuming). */
   selfGridFee?: number;
+  /**
+   * Self-consumption: true if your elhandel contract is priced per quarter (15-min spot).
+   * true -> value self-use at the per-quarter (production-weighted) spot; false -> at the
+   * period's simple average spot. Default true.
+   */
+  selfQuarterPrice?: boolean;
   /** Elnätsbolag fixed monthly fee in SEK/month (grid subscription; varies by fuse class). */
   gridMonthlyFee?: number;
   /** Elhandelsbolag fixed monthly fee in SEK/month. */
@@ -132,17 +138,24 @@ function analyzeExportCompensation(
  * a self-consumed kWh is worth than an exported one.
  */
 function analyzeSelfConsumption(
-  spotWavg: number,
+  realizedSpot: number,
+  avgSpot: number,
   opts: AnalyzeOptions
 ): NonNullable<AnalysisResult["sjalvkonsumtion"]> {
   const vat = normalizeVat(opts.vatRate);
   const tax = opts.selfEnergyTax ?? 0;
   const fee = opts.selfGridFee ?? 0;
-  const valueSelf = (spotWavg + tax + fee) * (1 + vat);
-  const exportValue = effectiveExportPrice(spotWavg, opts);
+  const quarter = opts.selfQuarterPrice !== false; // default true
+  // With quarter pricing the avoided purchase is the per-quarter spot (≈ production-weighted,
+  // since self-use happens while producing); otherwise it's the period's average spot.
+  const selfSpot = quarter ? realizedSpot : avgSpot;
+  const valueSelf = (selfSpot + tax + fee) * (1 + vat);
+  // Export is always realized at the quarter you export (production-weighted spot).
+  const exportValue = effectiveExportPrice(realizedSpot, opts);
   return {
     moms_pct: round(vat * 100, 1),
-    spot_sek_per_kwh: round(spotWavg, 4),
+    kvartpris: quarter,
+    spot_sek_per_kwh: round(selfSpot, 4),
     energiskatt_sek_per_kwh: round(tax, 4),
     natavgift_sek_per_kwh: round(fee, 4),
     varde_self_sek_per_kwh: round(valueSelf, 4),
@@ -462,7 +475,9 @@ export function analyze(
 
   const hasSelfInputs = opts.selfEnergyTax != null || opts.selfGridFee != null;
   const sjalvkonsumtion =
-    hasSelfInputs && totalMatchedKwh > 0 ? analyzeSelfConsumption(realizedPrice, opts) : undefined;
+    hasSelfInputs && totalMatchedKwh > 0
+      ? analyzeSelfConsumption(realizedPrice, avgPrice, opts)
+      : undefined;
 
   return {
     hero: {

@@ -50,6 +50,7 @@ const DEFAULT_SETTINGS = {
   traderMonthlyFee: "",
   energyTaxOre: "",
   gridFeeOre: "",
+  traderQuarterPrice: true,
   aiInsights: false,
 };
 
@@ -114,6 +115,7 @@ export default function Home() {
   // Self-consumption valuation (separate, optional). Inputs in öre/kWh.
   const [energyTaxOre, setEnergyTaxOre] = useState(DEFAULT_SETTINGS.energyTaxOre);
   const [gridFeeOre, setGridFeeOre] = useState(DEFAULT_SETTINGS.gridFeeOre);
+  const [traderQuarterPrice, setTraderQuarterPrice] = useState(DEFAULT_SETTINGS.traderQuarterPrice);
   const [aiInsights, setAiInsights] = useState(DEFAULT_SETTINGS.aiInsights);
   const [aiKey, setAiKey] = useState("");
   const [subscribe, setSubscribe] = useState(false);
@@ -157,6 +159,7 @@ export default function Home() {
         if (typeof s.traderMonthlyFee === "string") setTraderMonthlyFee(s.traderMonthlyFee);
         if (typeof s.energyTaxOre === "string") setEnergyTaxOre(s.energyTaxOre);
         if (typeof s.gridFeeOre === "string") setGridFeeOre(s.gridFeeOre);
+        if (typeof s.traderQuarterPrice === "boolean") setTraderQuarterPrice(s.traderQuarterPrice);
         if (typeof s.aiInsights === "boolean") setAiInsights(s.aiInsights);
       }
     } catch {
@@ -185,6 +188,7 @@ export default function Home() {
           traderMonthlyFee,
           energyTaxOre,
           gridFeeOre,
+          traderQuarterPrice,
           aiInsights,
         })
       );
@@ -203,6 +207,7 @@ export default function Home() {
     traderMonthlyFee,
     energyTaxOre,
     gridFeeOre,
+    traderQuarterPrice,
     aiInsights,
   ]);
 
@@ -296,6 +301,7 @@ export default function Home() {
         traderMonthlyFee: numOrUndef(traderMonthlyFee),
         selfEnergyTax: oreToSek(energyTaxOre),
         selfGridFee: oreToSek(gridFeeOre),
+        selfQuarterPrice: traderQuarterPrice,
       });
 
       if (analysis.meta.matched_kwh_pct < 99.5) {
@@ -344,7 +350,7 @@ export default function Home() {
     } finally {
       setIsAnalyzing(false);
     }
-  }, [selectedFile, selectedArea, fuseAmps, vatRate, gridFixedOre, gridPct, traderFixedOre, traderPct, gridMonthlyFee, traderMonthlyFee, energyTaxOre, gridFeeOre, aiInsights, aiKey, addLog]);
+  }, [selectedFile, selectedArea, fuseAmps, vatRate, gridFixedOre, gridPct, traderFixedOre, traderPct, gridMonthlyFee, traderMonthlyFee, energyTaxOre, gridFeeOre, traderQuarterPrice, aiInsights, aiKey, addLog]);
 
   // Run analysis immediately (report shown in-browser). Subscription is optional and,
   // when opted in, submitted best-effort without blocking the analysis.
@@ -410,6 +416,7 @@ export default function Home() {
     setTraderMonthlyFee(DEFAULT_SETTINGS.traderMonthlyFee);
     setEnergyTaxOre(DEFAULT_SETTINGS.energyTaxOre);
     setGridFeeOre(DEFAULT_SETTINGS.gridFeeOre);
+    setTraderQuarterPrice(DEFAULT_SETTINGS.traderQuarterPrice);
     setAiInsights(DEFAULT_SETTINGS.aiInsights);
     toast.success("Sparade värden rensade");
   }, []);
@@ -559,7 +566,10 @@ export default function Home() {
 
                 {/* Export compensation: two companies, each with a fixed + variable part */}
                 <div className="space-y-4 border-t border-border/50 pt-4">
-                  <h4 className="text-sm font-medium text-foreground">Ersättning för exporterad el</h4>
+                  <div className="space-y-1">
+                    <h4 className="text-base font-semibold text-foreground">Ersättning för exporterad el</h4>
+                    <p className="text-xs text-muted-foreground">Från både ditt elnätsbolag och elhandelsbolag.</p>
+                  </div>
 
                   <div className="space-y-2">
                     <h5 className="text-sm font-medium text-foreground">Elnätsbolag – förlustersättning</h5>
@@ -619,6 +629,15 @@ export default function Home() {
                       </div>
                       <p className="text-xs text-muted-foreground">
                         Visar vad en kWh är värd om du använder den själv – (spotpris + energiskatt + nätavgift) × (1 + moms) – jämfört med att exportera den. Lämna tomt för att hoppa över.
+                      </p>
+                      <div className="flex items-center justify-between gap-3 pt-1">
+                        <Label htmlFor="quarter-price" className="text-sm font-normal cursor-pointer">
+                          Kvartspris (15-min) hos elhandelsbolaget
+                        </Label>
+                        <Switch id="quarter-price" checked={traderQuarterPrice} onCheckedChange={setTraderQuarterPrice} />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        På: självkonsumtionen värderas mot spotpriset i varje kvart (när du faktiskt använder elen). Av: mot periodens snittspris.
                       </p>
                     </div>
                   )}

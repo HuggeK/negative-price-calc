@@ -163,6 +163,7 @@ interface AnalysisData {
   };
   sjalvkonsumtion?: {
     moms_pct?: number;
+    kvartpris?: boolean;
     spot_sek_per_kwh?: number;
     energiskatt_sek_per_kwh?: number;
     natavgift_sek_per_kwh?: number;
@@ -708,7 +709,8 @@ export function AnalysisResults({
               {formatOreSigned(data.sjalvkonsumtion.okning_vs_export_sek_per_kwh)}/kWh jämfört med att exportera
               ({formatOre(data.sjalvkonsumtion.export_varde_sek_per_kwh)}/kWh). Bygger på spot{" "}
               {formatOre(data.sjalvkonsumtion.spot_sek_per_kwh)} + energiskatt {formatOre(data.sjalvkonsumtion.energiskatt_sek_per_kwh)} + nätavgift{" "}
-              {formatOre(data.sjalvkonsumtion.natavgift_sek_per_kwh)}.
+              {formatOre(data.sjalvkonsumtion.natavgift_sek_per_kwh)}. Spotpris enligt{" "}
+              {data.sjalvkonsumtion.kvartpris ? "kvartspris" : "periodens snittspris"}.
             </div>
           </CardContent>
         </Card>

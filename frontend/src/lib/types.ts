@@ -133,6 +133,8 @@ export interface AnalysisResult {
    */
   sjalvkonsumtion?: {
     moms_pct: number;
+    /** True if valued at the per-quarter spot; false if at the period's average spot. */
+    kvartpris: boolean;
     spot_sek_per_kwh: number;
     energiskatt_sek_per_kwh: number;
     natavgift_sek_per_kwh: number;

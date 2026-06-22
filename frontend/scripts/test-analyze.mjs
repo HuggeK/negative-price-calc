@@ -248,5 +248,29 @@ console.log("Test 9: monthly forecast + daily aggregate");
   eq(r.aggregates.daily.length, 2, "daily aggregate has 2 days");
 }
 
+// --- Test 10: self-consumption quarter-price toggle (realized vs average spot) ---
+console.log("Test 10: self-consumption quarter-price toggle");
+{
+  const prod = [
+    { start: base, end: base + H, kwh: 3 }, // more production in the cheap hour
+    { start: base + H, end: base + 2 * H, kwh: 1 },
+  ];
+  const prices = [
+    { start: base, end: base + H, sekPerKwh: 1.0, eurPerKwh: 0 },
+    { start: base + H, end: base + 2 * H, sekPerKwh: 3.0, eurPerKwh: 0 },
+  ];
+  // realized (production-weighted) = 1.5 ; average (time-weighted) = 2.0
+  const on = analyze(prod, prices, { vatRate: 25, selfEnergyTax: 0.4, selfGridFee: 0.6, selfQuarterPrice: true });
+  eq(on.sjalvkonsumtion.kvartpris, true, "self ON: kvartpris flag");
+  approx(on.sjalvkonsumtion.spot_sek_per_kwh, 1.5, "self ON: spot basis = realized");
+  approx(on.sjalvkonsumtion.varde_self_sek_per_kwh, 3.125, "self ON: value (1.5+0.4+0.6)*1.25");
+
+  const off = analyze(prod, prices, { vatRate: 25, selfEnergyTax: 0.4, selfGridFee: 0.6, selfQuarterPrice: false });
+  eq(off.sjalvkonsumtion.kvartpris, false, "self OFF: kvartpris flag");
+  approx(off.sjalvkonsumtion.spot_sek_per_kwh, 2.0, "self OFF: spot basis = average");
+  approx(off.sjalvkonsumtion.varde_self_sek_per_kwh, 3.75, "self OFF: value (2.0+0.4+0.6)*1.25");
+  approx(off.sjalvkonsumtion.export_varde_sek_per_kwh, 1.875, "self OFF: export ref still realized (1.5*1.25)");
+}
+
 console.log(failures === 0 ? "\nALL PASSED" : `\n${failures} FAILURE(S)`);
 process.exit(failures === 0 ? 0 : 1);

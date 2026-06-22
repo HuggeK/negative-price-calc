@@ -118,6 +118,7 @@ class PriceAnalyzer:
         trader_monthly_fee: float = None,
         self_energy_tax: float = None,
         self_grid_fee: float = None,
+        self_quarter_price: bool = True,
     ) -> Dict[str, Any]:
         """
         Perform comprehensive analysis on merged price and production data.
@@ -141,6 +142,8 @@ class PriceAnalyzer:
                 self-consumption block.
             self_grid_fee (float, optional): Grid/transmission fee in SEK/kWh. Adds the
                 self-consumption block.
+            self_quarter_price (bool): True if consumption is priced per quarter (15-min) —
+                values self-use at the per-quarter spot; else at the period average. Default True.
 
         Returns:
             Dict[str, Any]: Analysis results with statistics and insights. Mirrors the
@@ -290,6 +293,12 @@ class PriceAnalyzer:
         total_kwh = float(analysis['production_total'])
         spot_total = float(analysis['total_export_value_sek'])
         realized_spot = spot_total / total_kwh if total_kwh else 0.0
+        # Duration-weighted average spot over the covered intervals (the "period average").
+        ih_sum = float(interval_hours.sum())
+        avg_spot = (
+            float((merged_df['price_sek_per_kwh'] * interval_hours).sum() / ih_sum)
+            if ih_sum > 0 else realized_spot
+        )
 
         def _norm_vat(v):
             if v is None:
@@ -335,11 +344,15 @@ class PriceAnalyzer:
         if total_kwh > 0 and any(x is not None for x in (self_energy_tax, self_grid_fee)):
             tax = self_energy_tax or 0.0
             fee = self_grid_fee or 0.0
-            value_self = (realized_spot + tax + fee) * (1 + vat)
+            # Quarter pricing -> avoided purchase at the per-quarter (production-weighted) spot;
+            # otherwise at the period's average spot. Export is always realized at production time.
+            self_spot = realized_spot if self_quarter_price else avg_spot
+            value_self = (self_spot + tax + fee) * (1 + vat)
             export_value = _effective(realized_spot)
             analysis['self_consumption'] = {
                 'vat_pct': round(vat * 100, 1),
-                'spot_sek_per_kwh': round(realized_spot, 4),
+                'quarter_price': self_quarter_price,
+                'spot_sek_per_kwh': round(self_spot, 4),
                 'energy_tax_sek_per_kwh': round(tax, 4),
                 'grid_fee_sek_per_kwh': round(fee, 4),
                 'value_self_sek_per_kwh': round(value_self, 4),

@@ -155,6 +155,29 @@ def test_export_compensation_and_self_consumption():
     assert s["increment_vs_export_sek_per_kwh"] == pytest.approx(0.875)
 
 
+def test_self_consumption_quarter_price_toggle():
+    # More production in the cheap hour: realized=1.5, average=2.0 SEK/kWh.
+    idx = pd.date_range("2025-11-03 00:00", periods=2, freq="h")
+    prices = pd.DataFrame({"price_eur_per_mwh": [100.0, 300.0]}, index=idx)  # 1.0, 3.0 SEK/kWh
+    production = pd.DataFrame({"production_kwh": [3.0, 1.0]}, index=idx)
+    merged = PriceAnalyzer.merge_data(prices, production, eur_sek_rate=10.0)
+
+    on = PriceAnalyzer.analyze_data(
+        merged, vat_rate=25, self_energy_tax=0.4, self_grid_fee=0.6, self_quarter_price=True
+    )["self_consumption"]
+    assert on["quarter_price"] is True
+    assert on["spot_sek_per_kwh"] == pytest.approx(1.5)  # realized
+    assert on["value_self_sek_per_kwh"] == pytest.approx(3.125)
+
+    off = PriceAnalyzer.analyze_data(
+        merged, vat_rate=25, self_energy_tax=0.4, self_grid_fee=0.6, self_quarter_price=False
+    )["self_consumption"]
+    assert off["quarter_price"] is False
+    assert off["spot_sek_per_kwh"] == pytest.approx(2.0)  # period average
+    assert off["value_self_sek_per_kwh"] == pytest.approx(3.75)
+    assert off["export_value_sek_per_kwh"] == pytest.approx(1.875)  # export realized at 1.5
+
+
 def test_export_at_loss_quarters():
     # 15-min prices [1.0, -0.5, 0.05, 1.0] SEK/kWh (eur_mwh /100 * 10), 1 kWh each quarter.
     idx = pd.date_range("2025-11-03 00:00", periods=4, freq="15min")
