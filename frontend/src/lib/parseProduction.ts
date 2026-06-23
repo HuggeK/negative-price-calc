@@ -260,3 +260,46 @@ export function assessResolution(parsed: ParsedProduction): ResolutionAssessment
       `men för att fånga negativa kvartar och korta effekttoppar rekommenderas 15-minutersdata.`,
   };
 }
+
+/**
+ * Combine several parsed production files into one continuous series. Swedish grid companies
+ * often cap 15-minute export downloads at ~3 months at a time, so users have to stitch several
+ * chunks together. Rows are merged, sorted by start time, and de-duplicated by start timestamp
+ * (chunk boundaries may overlap by a row or two). Granularity/columns are taken from the file
+ * with the most rows. `granularitiesMatch` is false if the files weren't all the same resolution.
+ */
+export function combineProduction(
+  parts: ParsedProduction[]
+): ParsedProduction & { filesCombined: number; duplicatesRemoved: number; granularitiesMatch: boolean } {
+  if (parts.length === 0) throw new Error("Inga filer att kombinera.");
+  if (parts.length === 1) {
+    return { ...parts[0], filesCombined: 1, duplicatesRemoved: 0, granularitiesMatch: true };
+  }
+  const all: ProductionInterval[] = parts
+    .flatMap((p) => p.rows)
+    .sort((a, b) => a.start - b.start);
+  const rows: ProductionInterval[] = [];
+  let duplicatesRemoved = 0;
+  for (const r of all) {
+    const prev = rows[rows.length - 1];
+    if (prev && prev.start === r.start) {
+      duplicatesRemoved += 1; // same interval coming from an overlapping chunk — keep the first
+      continue;
+    }
+    rows.push(r);
+  }
+  // Use the dominant (most rows) file for granularity/columns; they're the same export type.
+  const dominant = [...parts].sort((a, b) => b.rows.length - a.rows.length)[0];
+  const granularitiesMatch = parts.every((p) => p.granularity === parts[0].granularity);
+  return {
+    rows,
+    granularity: dominant.granularity,
+    stepMinutes: dominant.stepMinutes,
+    stepConsistencyPct: dominant.stepConsistencyPct,
+    datetimeColumn: dominant.datetimeColumn,
+    productionColumn: dominant.productionColumn,
+    filesCombined: parts.length,
+    duplicatesRemoved,
+    granularitiesMatch,
+  };
+}

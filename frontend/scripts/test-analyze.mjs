@@ -1,7 +1,7 @@
 // Sanity tests for the interval-aware analysis engine.
 // Run: node --experimental-strip-types frontend/scripts/test-analyze.mjs
 import { analyze, nextFuseStep } from "../src/lib/analyze.ts";
-import { parseProductionCsv, assessResolution } from "../src/lib/parseProduction.ts";
+import { parseProductionCsv, assessResolution, combineProduction } from "../src/lib/parseProduction.ts";
 
 let failures = 0;
 function approx(actual, expected, label, eps = 1e-6) {
@@ -383,6 +383,41 @@ console.log("Test 12: fuse upgrade");
     if (less) console.log(`  ✓ upgrade: kWp bound shrinks unlocked value (${u3.uppskattat_extra_varde_sek} < ${u.uppskattat_extra_varde_sek})`);
     else { failures++; console.error(`  ✗ upgrade: kWp bound did not shrink value (${JSON.stringify(u3)})`); }
   }
+}
+
+// --- Test 13: combine multiple production files (3-month chunks) ---
+console.log("Test 13: combine multi-file");
+{
+  const Q = 3_600_000 / 4;
+  const d = Date.UTC(2025, 0, 1, 0, 0, 0);
+  const mk = (rows) => ({
+    rows,
+    granularity: "15min",
+    stepMinutes: 15,
+    stepConsistencyPct: 100,
+    datetimeColumn: "Datum",
+    productionColumn: "kWh",
+  });
+  // Two chunks; the second repeats the last row of the first (overlapping boundary).
+  const a = mk([
+    { start: d, end: d + Q, kwh: 1 },
+    { start: d + Q, end: d + 2 * Q, kwh: 2 },
+  ]);
+  const b = mk([
+    { start: d + Q, end: d + 2 * Q, kwh: 2 }, // duplicate boundary row
+    { start: d + 2 * Q, end: d + 3 * Q, kwh: 3 },
+  ]);
+  const c = combineProduction([b, a]); // pass out of order on purpose
+  eq(c.filesCombined, 2, "combine: files combined = 2");
+  eq(c.rows.length, 3, "combine: 3 unique rows after dedup");
+  eq(c.duplicatesRemoved, 1, "combine: 1 overlapping row removed");
+  eq(c.granularitiesMatch, true, "combine: granularities match");
+  approx(c.rows[0].start, d, "combine: sorted, first row earliest");
+  approx(c.rows[2].kwh, 3, "combine: last row kept");
+  // Single-file passthrough.
+  const one = combineProduction([a]);
+  eq(one.filesCombined, 1, "combine: single file passthrough");
+  eq(one.rows.length, 2, "combine: single file rows unchanged");
 }
 
 console.log(failures === 0 ? "\nALL PASSED" : `\n${failures} FAILURE(S)`);

@@ -19,7 +19,7 @@ import { Header } from "@/components/header";
 import { FileUpload } from "@/components/file-upload";
 import { StreamingTerminal, LogEntry } from "@/components/streaming-terminal";
 import { AnalysisResults } from "@/components/analysis-results";
-import { parseProductionCsv, assessResolution } from "@/lib/parseProduction";
+import { parseProductionCsv, assessResolution, combineProduction } from "@/lib/parseProduction";
 import { fetchPrices } from "@/lib/prices";
 import { analyze, nextFuseStep } from "@/lib/analyze";
 import { generateAiSummary } from "@/lib/aiSummary";
@@ -100,7 +100,7 @@ async function submitSubscription(email: string): Promise<void> {
 }
 
 export default function Home() {
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [selectedArea, setSelectedArea] = useState(DEFAULT_SETTINGS.selectedArea);
   const [fuseAmps, setFuseAmps] = useState(DEFAULT_SETTINGS.fuseAmps); // "" = Vet ej / skip
   const [vatRate, setVatRate] = useState(DEFAULT_SETTINGS.vatRate);
@@ -240,10 +240,10 @@ export default function Home() {
     setLogs((prev) => [...prev, { timestamp, type, message }]);
   }, []);
 
-  const handleAnalyze = useCallback(async (fileArg?: File) => {
-    const file = fileArg ?? selectedFile;
-    if (!file) {
-      toast.error("Välj en fil först");
+  const handleAnalyze = useCallback(async (filesArg?: File[]) => {
+    const files = filesArg ?? selectedFiles;
+    if (!files.length) {
+      toast.error("Välj minst en fil först");
       return;
     }
 
@@ -259,14 +259,33 @@ export default function Home() {
     const { signal } = abortControllerRef.current;
 
     try {
-      addLog("info", `Läser in ${file.name}...`);
-      const text = await file.text();
-
-      addLog("info", "Tolkar produktionsdata...");
-      const parsed = parseProductionCsv(text, file.name);
+      // Parse every uploaded file and combine them — grid companies often cap 15-minute
+      // export downloads at ~3 months, so users stitch several chunks together.
+      addLog("info", files.length > 1 ? `Läser in ${files.length} filer...` : `Läser in ${files[0].name}...`);
+      const parsedParts = [];
+      for (const f of files) {
+        const text = await f.text();
+        const p = parseProductionCsv(text, f.name);
+        addLog(
+          "success",
+          `${f.name}: ${p.rows.length} rader (${GRANULARITY_LABEL[p.granularity] ?? p.granularity}).`
+        );
+        parsedParts.push(p);
+      }
+      const parsed = combineProduction(parsedParts);
+      if (parsed.filesCombined > 1) {
+        if (!parsed.granularitiesMatch) {
+          addLog("warning", "Filerna har olika upplösning – kombinerar ändå, men kontrollera resultatet.");
+        }
+        addLog(
+          "info",
+          `Kombinerade ${parsed.filesCombined} filer → ${parsed.rows.length} rader` +
+            (parsed.duplicatesRemoved > 0 ? ` (${parsed.duplicatesRemoved} överlappande rader togs bort).` : ".")
+        );
+      }
       addLog(
         "success",
-        `Tolkade ${parsed.rows.length} rader (${GRANULARITY_LABEL[parsed.granularity] ?? parsed.granularity}) ` +
+        `Tolkade totalt ${parsed.rows.length} rader (${GRANULARITY_LABEL[parsed.granularity] ?? parsed.granularity}) ` +
           `– kolumner "${parsed.datetimeColumn}" / "${parsed.productionColumn}".`
       );
 
@@ -351,7 +370,10 @@ export default function Home() {
         kvartspris_elhandel: traderQuarterPrice,
       };
       setResult(analysis);
-      setDisplayMeta({ filename: file.name, area: selectedArea });
+      setDisplayMeta({
+        filename: files.length === 1 ? files[0].name : `${files.length} filer (kombinerade)`,
+        area: selectedArea,
+      });
       addLog("success", "Analys klar!");
 
       // Optional in-browser AI summary (uses the user's own OpenRouter key).
@@ -385,13 +407,13 @@ export default function Home() {
     } finally {
       setIsAnalyzing(false);
     }
-  }, [selectedFile, selectedArea, fuseAmps, vatRate, gridFixedOre, gridPct, traderFixedOre, traderPct, gridMonthlyFee, nextFuseFee, installedKwp, traderMonthlyFee, energyTaxOre, gridFeeOre, traderQuarterPrice, aiInsights, aiKey, addLog]);
+  }, [selectedFiles, selectedArea, fuseAmps, vatRate, gridFixedOre, gridPct, traderFixedOre, traderPct, gridMonthlyFee, nextFuseFee, installedKwp, traderMonthlyFee, energyTaxOre, gridFeeOre, traderQuarterPrice, aiInsights, aiKey, addLog]);
 
   // Run analysis immediately (report shown in-browser). Subscription is optional and,
   // when opted in, submitted best-effort without blocking the analysis.
   const handleRun = useCallback(() => {
-    if (!selectedFile) {
-      toast.error("Välj en fil först");
+    if (!selectedFiles.length) {
+      toast.error("Välj minst en fil först");
       return;
     }
     if (subscribe && email.trim()) {
@@ -404,7 +426,7 @@ export default function Home() {
         .catch(() => toast.error("Kunde inte registrera prenumerationen (analysen körs ändå)."));
     }
     handleAnalyze();
-  }, [selectedFile, subscribe, email, handleAnalyze]);
+  }, [selectedFiles, subscribe, email, handleAnalyze]);
 
   // Load the bundled 15-minute sample file and run the analysis on it directly.
   const handleTryExample = useCallback(async () => {
@@ -414,8 +436,8 @@ export default function Home() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blob = await res.blob();
       const file = new File([blob], EXAMPLE_FILE_NAME, { type: "text/csv" });
-      setSelectedFile(file);
-      await handleAnalyze(file);
+      setSelectedFiles([file]);
+      await handleAnalyze([file]);
     } catch {
       toast.error("Kunde inte ladda exempelfilen. Försök igen.");
     } finally {
@@ -486,7 +508,7 @@ export default function Home() {
       ...result,
       ...(aiSummary ? { ai_explanation_sv: aiSummary } : {}),
       _metadata: {
-        filename: displayMeta?.filename ?? selectedFile?.name ?? "",
+        filename: displayMeta?.filename ?? selectedFiles[0]?.name ?? "",
         area: displayMeta?.area ?? selectedArea,
         currency: "SEK",
         granularity: result.input.granularity,
@@ -495,7 +517,7 @@ export default function Home() {
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     triggerDownload(blob, `prisanalys_${displayMeta?.area ?? selectedArea}.json`);
-  }, [result, aiSummary, selectedArea, selectedFile, displayMeta]);
+  }, [result, aiSummary, selectedArea, selectedFiles, displayMeta]);
 
   // CSV at 15-minute resolution: a header block with the price parameters, then the
   // per-interval producing series.
@@ -545,7 +567,7 @@ export default function Home() {
             <AnalysisResults
               data={aiSummary ? { ...result, ai_explanation_sv: aiSummary } : result}
               metadata={{
-                filename: displayMeta?.filename ?? selectedFile?.name ?? "",
+                filename: displayMeta?.filename ?? selectedFiles[0]?.name ?? "",
                 area: displayMeta?.area ?? selectedArea,
                 currency: "SEK",
                 granularity: result.input.granularity,
@@ -558,7 +580,9 @@ export default function Home() {
           <div className="max-w-3xl mx-auto space-y-6">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-xl font-semibold">Analyserar {selectedFile?.name}</h2>
+                <h2 className="text-xl font-semibold">
+                  Analyserar {selectedFiles.length === 1 ? selectedFiles[0]?.name : `${selectedFiles.length} filer`}
+                </h2>
                 <p className="text-sm text-muted-foreground">Elområde: {selectedArea}</p>
               </div>
               <Button variant="outline" size="sm" onClick={handleReset} disabled={!isAnalyzing && !hasError}>
@@ -591,7 +615,7 @@ export default function Home() {
             </div>
 
             <div className="space-y-6">
-              <FileUpload selectedFile={selectedFile} onFileSelect={setSelectedFile} />
+              <FileUpload selectedFiles={selectedFiles} onFilesSelect={setSelectedFiles} />
 
               <div className="space-y-2">
                 <Label>Svenskt elområde</Label>
@@ -697,7 +721,7 @@ export default function Home() {
                   </div>
 
                   <div className="space-y-2">
-                    <h5 className="text-sm font-medium text-foreground">Elnätsbolag</h5>
+                    <h5 className="text-sm font-medium text-foreground">Elnätsbolag – nätersättning</h5>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-2">
                         <Label htmlFor="grid-fixed">Fast (öre/kWh)</Label>
@@ -709,7 +733,8 @@ export default function Home() {
                       </div>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Den rörliga delen är oftast ca 5 % av spotpriset.
+                      Nätersättning (förlustersättning). Den rörliga delen är oftast ca 5 % av spotpriset – det motsvarar att
+                      elnätsföretagets kostnader minskar när el produceras lokalt (mindre överföringsförluster), så de betalar dig en del av den besparingen.
                     </p>
                   </div>
 
@@ -851,7 +876,7 @@ export default function Home() {
                 )}
               </div>
 
-              <Button className="w-full" size="lg" onClick={handleRun} disabled={!selectedFile || isAnalyzing || isLoadingExample}>
+              <Button className="w-full" size="lg" onClick={handleRun} disabled={!selectedFiles.length || isAnalyzing || isLoadingExample}>
                 {isAnalyzing ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -877,9 +902,9 @@ export default function Home() {
                   "Prova med exempeldata (15-min)"
                 )}
               </Button>
-              {!selectedFile && (
+              {!selectedFiles.length && (
                 <p className="text-center text-sm text-muted-foreground">
-                  Välj en fil ovan, eller klicka på <span className="text-foreground">Prova med exempeldata</span> för att testa direkt.
+                  Välj en eller flera filer ovan, eller klicka på <span className="text-foreground">Prova med exempeldata</span> för att testa direkt.
                 </p>
               )}
 
