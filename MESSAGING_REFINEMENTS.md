@@ -1,7 +1,7 @@
 # Refined Messaging for Negative Price Calculator
 
 > **Note:** Historical messaging/design notes. The app is now a browser-only tool on
-> GitHub Pages (https://huggek.github.io/negative-price-calc/); the live UI copy is in
+> GitHub Pages (https://srcfl.github.io/negative-price-calc/); the live UI copy is in
 > `frontend/src/`.
 
 ## Overview

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is now
 
-The **deployed product is a browser-only static web app** (Next.js in `frontend/`) hosted on **GitHub Pages**: https://huggek.github.io/negative-price-calc/. All analysis runs **client-side in TypeScript** — there is no backend at runtime. The Python code lives in **`python/`** (`python/core/`, `python/cli/`) and is kept as a feature-parity library/CLI for offline/scripted use; `python/app.py` (Flask) is optional and not used by the static site.
+The **deployed product is a browser-only static web app** (Next.js in `frontend/`) hosted on **GitHub Pages**: https://srcfl.github.io/negative-price-calc/. All analysis runs **client-side in TypeScript** — there is no backend at runtime. The Python code lives in **`python/`** (`python/core/`, `python/cli/`) and is kept as a feature-parity library/CLI for offline/scripted use; `python/app.py` (Flask) is optional and not used by the static site.
 
 When adding analysis features, implement them in the TypeScript engine first (it ships) and mirror them in the Python analyzer with a test. See `MEMORY` notes about keeping TS + Python in parity.
 

@@ -2,7 +2,7 @@
 
 Analyze your solar export against historical Swedish spot prices — including negative prices — and see what your electricity was actually worth. The web app runs entirely in your browser; your production file never leaves your device.
 
-**[Live app](https://huggek.github.io/negative-price-calc/)**
+**[Live app](https://srcfl.github.io/negative-price-calc/)**
 
 <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License">
 <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome">

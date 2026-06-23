@@ -2,7 +2,7 @@
 
 Browser-only Next.js app (static export → GitHub Pages) that runs the entire
 electricity price/production analysis client-side. Live at
-https://huggek.github.io/negative-price-calc/.
+https://srcfl.github.io/negative-price-calc/.
 
 ## UI Framework
 

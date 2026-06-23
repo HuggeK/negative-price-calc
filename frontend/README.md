@@ -4,7 +4,7 @@ The browser-only frontend for the Negative Price Calculator. It parses your sola
 export file, fetches Swedish spot prices, and computes the whole analysis **client-side**
 (no backend). Deployed as a static site to GitHub Pages.
 
-**Live:** https://huggek.github.io/negative-price-calc/
+**Live:** https://srcfl.github.io/negative-price-calc/
 
 ## Develop
 
