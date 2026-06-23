@@ -88,6 +88,7 @@ export interface AnalysisResult {
     elhandel_fast_ore_per_kwh?: string;
     elhandel_rorlig_pct?: string;
     elnat_manadsavgift_kr?: string;
+    elnat_manadsavgift_nasta_sakring_kr?: string;
     elhandel_manadsavgift_kr?: string;
     energiskatt_ore_per_kwh?: string;
     natavgift_ore_per_kwh?: string;
@@ -223,6 +224,32 @@ export interface AnalysisResult {
     energi_vid_max_kwh: number;
     /** Daily peak export power (kW), for charting against the fuse limit. */
     serie: Array<{ date: string; peak_kw: number }>;
+  };
+  /**
+   * Fuse-upgrade analysis: is paying the higher grid subscription for the next fuse size up
+   * worth the extra export it would unlock? Present when a fuse size and the next-step monthly
+   * fee are both given. The unlocked-export figures are optimistic upper bounds (the energy is
+   * produced at midday peaks when spot is lowest, so its marginal value is small).
+   */
+  sakringsuppgradering?: {
+    nuvarande_sakring_amp: number;
+    nuvarande_sakring_kw: number;
+    nasta_sakring_amp: number;
+    nasta_sakring_kw: number;
+    nuvarande_avgift_kr_per_man: number;
+    nasta_avgift_kr_per_man: number;
+    extra_avgift_kr_per_man: number;
+    extra_avgift_kr_per_ar: number;
+    /** Producing intervals (≈ quarters) that hit the current fuse cap. */
+    kvartar_vid_max: number;
+    period_dagar: number;
+    uppskattad_extra_export_kwh: number;
+    uppskattat_extra_varde_sek: number;
+    uppskattad_extra_export_kwh_per_ar: number;
+    uppskattat_extra_varde_per_ar_sek: number;
+    /** Annual unlocked export value minus the extra annual subscription fee. */
+    netto_per_ar_sek: number;
+    vart_att_uppgradera: boolean;
   };
   meta: {
     price_granularity: Granularity;

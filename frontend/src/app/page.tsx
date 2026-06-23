@@ -21,7 +21,7 @@ import { StreamingTerminal, LogEntry } from "@/components/streaming-terminal";
 import { AnalysisResults } from "@/components/analysis-results";
 import { parseProductionCsv, assessResolution } from "@/lib/parseProduction";
 import { fetchPrices } from "@/lib/prices";
-import { analyze } from "@/lib/analyze";
+import { analyze, nextFuseStep } from "@/lib/analyze";
 import { generateAiSummary } from "@/lib/aiSummary";
 import type { AnalysisResult } from "@/lib/types";
 
@@ -47,6 +47,7 @@ const DEFAULT_SETTINGS = {
   traderFixedOre: "",
   traderPct: "",
   gridMonthlyFee: "",
+  nextFuseFee: "",
   traderMonthlyFee: "",
   energyTaxOre: "",
   gridFeeOre: "",
@@ -111,6 +112,8 @@ export default function Home() {
   const [traderPct, setTraderPct] = useState(DEFAULT_SETTINGS.traderPct);
   // Fixed monthly fees (kronor/month, not öre): elnät (per fuse class) + elhandel.
   const [gridMonthlyFee, setGridMonthlyFee] = useState(DEFAULT_SETTINGS.gridMonthlyFee);
+  // Monthly grid fee for the NEXT fuse size up (enables the upgrade-worthiness analysis).
+  const [nextFuseFee, setNextFuseFee] = useState(DEFAULT_SETTINGS.nextFuseFee);
   const [traderMonthlyFee, setTraderMonthlyFee] = useState(DEFAULT_SETTINGS.traderMonthlyFee);
   // Self-consumption valuation (separate, optional). Inputs in öre/kWh.
   const [energyTaxOre, setEnergyTaxOre] = useState(DEFAULT_SETTINGS.energyTaxOre);
@@ -159,6 +162,7 @@ export default function Home() {
         if (typeof s.traderFixedOre === "string") setTraderFixedOre(s.traderFixedOre);
         if (typeof s.traderPct === "string") setTraderPct(s.traderPct);
         if (typeof s.gridMonthlyFee === "string") setGridMonthlyFee(s.gridMonthlyFee);
+        if (typeof s.nextFuseFee === "string") setNextFuseFee(s.nextFuseFee);
         if (typeof s.traderMonthlyFee === "string") setTraderMonthlyFee(s.traderMonthlyFee);
         if (typeof s.energyTaxOre === "string") setEnergyTaxOre(s.energyTaxOre);
         if (typeof s.gridFeeOre === "string") setGridFeeOre(s.gridFeeOre);
@@ -188,6 +192,7 @@ export default function Home() {
           traderFixedOre,
           traderPct,
           gridMonthlyFee,
+          nextFuseFee,
           traderMonthlyFee,
           energyTaxOre,
           gridFeeOre,
@@ -207,6 +212,7 @@ export default function Home() {
     traderFixedOre,
     traderPct,
     gridMonthlyFee,
+    nextFuseFee,
     traderMonthlyFee,
     energyTaxOre,
     gridFeeOre,
@@ -301,6 +307,7 @@ export default function Home() {
         traderFixed: oreToSek(traderFixedOre),
         traderPct: numOrUndef(traderPct),
         gridMonthlyFee: numOrUndef(gridMonthlyFee),
+        nextFuseMonthlyFee: numOrUndef(nextFuseFee),
         traderMonthlyFee: numOrUndef(traderMonthlyFee),
         selfEnergyTax: oreToSek(energyTaxOre),
         selfGridFee: oreToSek(gridFeeOre),
@@ -329,6 +336,7 @@ export default function Home() {
         elhandel_fast_ore_per_kwh: traderFixedOre || undefined,
         elhandel_rorlig_pct: traderPct || undefined,
         elnat_manadsavgift_kr: gridMonthlyFee || undefined,
+        elnat_manadsavgift_nasta_sakring_kr: nextFuseFee || undefined,
         elhandel_manadsavgift_kr: traderMonthlyFee || undefined,
         energiskatt_ore_per_kwh: energyTaxOre || undefined,
         natavgift_ore_per_kwh: gridFeeOre || undefined,
@@ -369,7 +377,7 @@ export default function Home() {
     } finally {
       setIsAnalyzing(false);
     }
-  }, [selectedFile, selectedArea, fuseAmps, vatRate, gridFixedOre, gridPct, traderFixedOre, traderPct, gridMonthlyFee, traderMonthlyFee, energyTaxOre, gridFeeOre, traderQuarterPrice, aiInsights, aiKey, addLog]);
+  }, [selectedFile, selectedArea, fuseAmps, vatRate, gridFixedOre, gridPct, traderFixedOre, traderPct, gridMonthlyFee, nextFuseFee, traderMonthlyFee, energyTaxOre, gridFeeOre, traderQuarterPrice, aiInsights, aiKey, addLog]);
 
   // Run analysis immediately (report shown in-browser). Subscription is optional and,
   // when opted in, submitted best-effort without blocking the analysis.
@@ -454,6 +462,7 @@ export default function Home() {
     setTraderFixedOre(DEFAULT_SETTINGS.traderFixedOre);
     setTraderPct(DEFAULT_SETTINGS.traderPct);
     setGridMonthlyFee(DEFAULT_SETTINGS.gridMonthlyFee);
+    setNextFuseFee(DEFAULT_SETTINGS.nextFuseFee);
     setTraderMonthlyFee(DEFAULT_SETTINGS.traderMonthlyFee);
     setEnergyTaxOre(DEFAULT_SETTINGS.energyTaxOre);
     setGridFeeOre(DEFAULT_SETTINGS.gridFeeOre);
@@ -495,6 +504,7 @@ export default function Home() {
       `# Elhandel fast (öre/kWh);${p.elhandel_fast_ore_per_kwh ?? ""}`,
       `# Elhandel rörlig (% av spot);${p.elhandel_rorlig_pct ?? ""}`,
       `# Elnät månadsavgift (kr);${p.elnat_manadsavgift_kr ?? ""}`,
+      `# Elnät månadsavgift nästa säkring (kr);${p.elnat_manadsavgift_nasta_sakring_kr ?? ""}`,
       `# Elhandel månadsavgift (kr);${p.elhandel_manadsavgift_kr ?? ""}`,
       `# Energiskatt (öre/kWh);${p.energiskatt_ore_per_kwh ?? ""}`,
       `# Nätavgift (öre/kWh);${p.natavgift_ore_per_kwh ?? ""}`,
@@ -611,6 +621,26 @@ export default function Home() {
                     Används för att räkna ut hur ofta din nätanslutning var maxad (3-fas, 400 V).
                   </p>
                 </div>
+
+                {fuseAmps && nextFuseStep(Number(fuseAmps)) !== undefined && (
+                  <div className="space-y-2">
+                    <Label htmlFor="next-fuse-fee">
+                      Elnät månadsavgift för nästa säkring – {nextFuseStep(Number(fuseAmps))} A
+                      {" "}(≈ {Math.round((Math.sqrt(3) * 400 * Number(nextFuseStep(Number(fuseAmps)))) / 100) / 10} kW) (kr/månad)
+                    </Label>
+                    <Input
+                      id="next-fuse-fee"
+                      inputMode="decimal"
+                      value={nextFuseFee}
+                      onChange={(e) => setNextFuseFee(e.target.value)}
+                      placeholder="t.ex. 375"
+                      className="max-w-[12rem]"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Fyll i för att se om det är värt att uppgradera huvudsäkringen ett steg (jämförs mot elnätets månadsavgift ovan).
+                    </p>
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <h5 className="text-sm font-medium text-foreground">Fasta månadsavgifter</h5>

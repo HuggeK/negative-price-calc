@@ -1,6 +1,6 @@
 // Sanity tests for the interval-aware analysis engine.
 // Run: node --experimental-strip-types frontend/scripts/test-analyze.mjs
-import { analyze } from "../src/lib/analyze.ts";
+import { analyze, nextFuseStep } from "../src/lib/analyze.ts";
 import { parseProductionCsv, assessResolution } from "../src/lib/parseProduction.ts";
 
 let failures = 0;
@@ -301,6 +301,55 @@ console.log("Test 11: partial month normalized to full month");
   approx(f.manader[0].dagar_i_manad, 30, "forecast: days in month");
   approx(f.manader[0].production_kwh, 720, "forecast: normalized production (360*2)");
   approx(f.manader[0].netto_sek, 620, "forecast: net (720 - 100 fixed)");
+}
+
+// --- Test 12: fuse upgrade worthiness ---
+console.log("Test 12: fuse upgrade");
+{
+  eq(nextFuseStep(20), 25, "nextFuseStep(20) = 25");
+  eq(nextFuseStep(16), 20, "nextFuseStep(16) = 20");
+  eq(nextFuseStep(250), undefined, "nextFuseStep(250) = undefined (top)");
+
+  // 16 A @ 400 V ≈ 11.08 kW. Build 24h of 15-min producing intervals that sit AT the cap
+  // (so every quarter is "vid max"), priced at a positive spot, over 1 day. Next step = 20 A.
+  const H = 3_600_000;
+  const Q = H / 4;
+  const d0 = Date.UTC(2025, 5, 1, 0, 0, 0);
+  const capKw = (Math.sqrt(3) * 400 * 16) / 1000; // ≈ 11.08
+  const prod = [];
+  const prices = [];
+  for (let i = 0; i < 96; i++) {
+    const s = d0 + i * Q;
+    prod.push({ start: s, end: s + Q, kwh: capKw * 0.25 }); // power == cap
+    prices.push({ start: s, end: s + Q, sekPerKwh: 1.0, eurPerKwh: 0 });
+  }
+  const r = analyze(prod, prices, {
+    productionGranularity: "15min",
+    priceGranularity: "15min",
+    fuseAmps: 16,
+    vatRate: 0,
+    gridMonthlyFee: 200,
+    nextFuseMonthlyFee: 275, // +75/mån -> +900/år
+  });
+  const u = r.sakringsuppgradering;
+  if (!u) {
+    failures++;
+    console.error("  ✗ sakringsuppgradering missing");
+  } else {
+    eq(u.nuvarande_sakring_amp, 16, "upgrade: current fuse 16 A");
+    eq(u.nasta_sakring_amp, 20, "upgrade: next fuse 20 A");
+    eq(u.kvartar_vid_max, 96, "upgrade: all 96 quarters at cap");
+    approx(u.extra_avgift_kr_per_man, 75, "upgrade: +75 kr/mån");
+    approx(u.extra_avgift_kr_per_ar, 900, "upgrade: +900 kr/år");
+    // Headroom = (20-16)/16 * capKw ≈ 0.25*11.08 = 2.77 kW over 24h = 66.5 kWh unlocked/day,
+    // at spot 1.0 (no VAT/offsets) => ~66.5 kr/day. Just check it's positive and annualizes up.
+    const ok = u.uppskattat_extra_varde_sek > 0 && u.uppskattat_extra_varde_per_ar_sek > u.uppskattat_extra_varde_sek;
+    if (ok) console.log(`  ✓ upgrade: unlocked value positive & annualized (${u.uppskattat_extra_varde_per_ar_sek}/år)`);
+    else {
+      failures++;
+      console.error(`  ✗ upgrade: unlocked value annualization off (${JSON.stringify(u)})`);
+    }
+  }
 }
 
 console.log(failures === 0 ? "\nALL PASSED" : `\n${failures} FAILURE(S)`);

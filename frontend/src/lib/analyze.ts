@@ -63,6 +63,21 @@ export interface AnalyzeOptions {
   gridMonthlyFee?: number;
   /** Elhandelsbolag fixed monthly fee in SEK/month. */
   traderMonthlyFee?: number;
+  /**
+   * Monthly grid subscription fee (SEK/month) for the NEXT fuse size up. When given together
+   * with fuseAmps, enables the "is it worth upgrading the main fuse?" analysis. Compared
+   * against the current grid monthly fee (gridMonthlyFee).
+   */
+  nextFuseMonthlyFee?: number;
+}
+
+/** Standard Swedish main-fuse ratings (amperes), in ascending order. */
+export const FUSE_LADDER = [16, 20, 25, 35, 50, 63, 80, 100, 125, 160, 200, 250];
+
+/** The next standard fuse rating strictly larger than `amps` (undefined if already at the top). */
+export function nextFuseStep(amps: number): number | undefined {
+  for (const a of FUSE_LADDER) if (a > amps) return a;
+  return undefined;
 }
 
 /** Normalize a VAT input: 25 -> 0.25, 0.25 -> 0.25. */
@@ -332,12 +347,30 @@ export function analyze(
   }
   const series: SeriesPoint[] = [];
 
+  // Fuse-upgrade ("is a bigger main fuse worth it?") accumulators. Energy unlocked by a
+  // bigger fuse is produced at midday production peaks — when spot is often lowest — so we
+  // value it at the effective export price during the very quarters that hit the cap.
+  const upgFuseAmps = opts.fuseAmps ?? 0;
+  const upgVoltage = opts.voltage ?? 400;
+  const upgNextAmps =
+    upgFuseAmps > 0 && opts.nextFuseMonthlyFee != null ? nextFuseStep(upgFuseAmps) : undefined;
+  const upgCurLimitKw = (SQRT3 * upgVoltage * upgFuseAmps) / 1000;
+  const upgNextLimitKw = upgNextAmps ? (SQRT3 * upgVoltage * upgNextAmps) / 1000 : 0;
+  const upgThreshold = upgCurLimitKw * MAXED_FRACTION;
+  const upgHeadroomKw = upgNextLimitKw - upgCurLimitKw;
+  let upgUnlockedKwh = 0;
+  let upgUnlockedValue = 0;
+  let upgClipIntervals = 0;
+
   // Sweep: lo is the first price interval that could overlap the current production row.
   let lo = 0;
   for (const p of sortedProd) {
     totalProductionKwh += p.kwh;
     const span = p.end - p.start;
     if (span <= 0) continue;
+
+    const rowClipping = upgNextAmps !== undefined && p.kwh / (span / MS_PER_HOUR) >= upgThreshold;
+    if (rowClipping) upgClipIntervals += 1;
 
     while (lo < sortedPrice.length && sortedPrice[lo].end <= p.start) lo++;
 
@@ -350,6 +383,12 @@ export function analyze(
       const energy = p.kwh * fraction; // kWh allocated to this price interval
       const hours = overlapMs / MS_PER_HOUR;
       const value = energy * q.sekPerKwh;
+
+      if (rowClipping) {
+        const unlocked = upgHeadroomKw * hours; // extra kWh the bigger fuse could pass here
+        upgUnlockedKwh += unlocked;
+        upgUnlockedValue += unlocked * effPrice(q.sekPerKwh);
+      }
 
       totalMatchedKwh += energy;
       revenueSek += value;
@@ -495,6 +534,40 @@ export function analyze(
       ? analyzeFusePeaks(sortedProd, opts.fuseAmps, opts.voltage ?? 400)
       : undefined;
 
+  // Fuse upgrade: weigh the extra annual grid subscription fee against the (optimistic)
+  // value of the export it would unlock during the quarters that currently hit the cap.
+  const sakringsuppgradering =
+    upgNextAmps !== undefined
+      ? (() => {
+          const periodDays = (prodEnd - prodStart) / DAY_MS;
+          const annualFactor = periodDays > 0 ? 365 / periodDays : 0;
+          const curFee = gridMonthlyFee;
+          const nextFee = opts.nextFuseMonthlyFee ?? 0;
+          const extraFeeMonth = nextFee - curFee;
+          const extraFeeYear = extraFeeMonth * 12;
+          const unlockedValYear = upgUnlockedValue * annualFactor;
+          const nettoYear = unlockedValYear - extraFeeYear;
+          return {
+            nuvarande_sakring_amp: upgFuseAmps,
+            nuvarande_sakring_kw: round(upgCurLimitKw, 2),
+            nasta_sakring_amp: upgNextAmps,
+            nasta_sakring_kw: round(upgNextLimitKw, 2),
+            nuvarande_avgift_kr_per_man: round(curFee, 2),
+            nasta_avgift_kr_per_man: round(nextFee, 2),
+            extra_avgift_kr_per_man: round(extraFeeMonth, 2),
+            extra_avgift_kr_per_ar: round(extraFeeYear, 2),
+            kvartar_vid_max: upgClipIntervals,
+            period_dagar: round(periodDays, 1),
+            uppskattad_extra_export_kwh: round(upgUnlockedKwh, 1),
+            uppskattat_extra_varde_sek: round(upgUnlockedValue, 2),
+            uppskattad_extra_export_kwh_per_ar: round(upgUnlockedKwh * annualFactor, 1),
+            uppskattat_extra_varde_per_ar_sek: round(unlockedValYear, 2),
+            netto_per_ar_sek: round(nettoYear, 2),
+            vart_att_uppgradera: nettoYear > 0,
+          };
+        })()
+      : undefined;
+
   // Quarters exported at a loss (effective price < 0), with the spot break-even threshold,
   // a daily loss series for charting, and the worst occasions for a table.
   const segMinutes = Math.min(
@@ -583,6 +656,7 @@ export function analyze(
     sjalvkonsumtion,
     forlust_export,
     natanslutning,
+    sakringsuppgradering,
     meta: {
       price_granularity: opts.priceGranularity ?? "unknown",
       price_intervals: sortedPrice.length,
