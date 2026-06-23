@@ -96,7 +96,7 @@ const EXAMPLE_SETTINGS: typeof DEFAULT_SETTINGS = {
 };
 
 const GRANULARITY_LABEL: Record<string, string> = {
-  "15min": "kvartsdata (15 min)",
+  "15min": "PT15M (15 min)",
   hourly: "timdata (60 min)",
   daily: "dygnsdata",
   unknown: "okänd upplösning",
@@ -685,7 +685,7 @@ export default function Home() {
       `# Elhandel månadsavgift (kr);${p.elhandel_manadsavgift_kr ?? ""}`,
       `# Energiskatt (öre/kWh);${p.energiskatt_ore_per_kwh ?? ""}`,
       `# Nätavgift (öre/kWh);${p.natavgift_ore_per_kwh ?? ""}`,
-      `# Kvartspris elhandel;${p.kvartspris_elhandel ? "ja" : "nej"}`,
+      `# PT15M-pris elhandel;${p.kvartspris_elhandel ? "ja" : "nej"}`,
       "#",
     ];
     const header = "tid;produktion_kwh;spotpris_sek_per_kwh;effektivt_pris_sek_per_kwh;varde_sek";
@@ -1000,7 +1000,7 @@ export default function Home() {
                       </p>
                       <div className="flex items-center justify-between gap-3 pt-1">
                         <Label htmlFor="quarter-price" className="text-sm font-normal cursor-pointer">
-                          Kvartspris (15-min) hos elhandelsbolaget
+                          PT15M-pris hos elhandelsbolaget
                         </Label>
                         <Switch id="quarter-price" checked={traderQuarterPrice} onCheckedChange={setTraderQuarterPrice} />
                       </div>

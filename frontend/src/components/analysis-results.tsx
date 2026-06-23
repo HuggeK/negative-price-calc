@@ -410,7 +410,7 @@ function getGranularityLabel(granularity: string | undefined): string {
     case "15min":
     case "15-min":
     case "quarterly":
-      return "Kvartsdata (15 min)";
+      return "PT15M (15 min)";
     case "daily":
       return "Dygnsdata";
     default:
@@ -1052,7 +1052,7 @@ export function AnalysisResults({
               {formatOreSigned(data.sjalvkonsumtion.okning_vs_export_sek_per_kwh)}/kWh mer värt än att exportera. Bygger på spot
               {" "}+ energiskatt {formatOre(data.sjalvkonsumtion.energiskatt_sek_per_kwh)} + nätavgift{" "}
               {formatOre(data.sjalvkonsumtion.natavgift_sek_per_kwh)}, spotpris enligt{" "}
-              {data.sjalvkonsumtion.kvartpris ? "kvartspris" : "periodens snittspris"}.
+              {data.sjalvkonsumtion.kvartpris ? "PT15M-pris" : "periodens snittspris"}.
             </div>
 
             {data.sjalvkonsumtion.manader && data.sjalvkonsumtion.manader.length > 0 && (
@@ -1212,7 +1212,7 @@ export function AnalysisResults({
                 push("Elhandel månadsavgift", pp.elhandel_manadsavgift_kr ? `${pp.elhandel_manadsavgift_kr} kr/mån` : undefined);
                 push("Energiskatt", pp.energiskatt_ore_per_kwh ? `${pp.energiskatt_ore_per_kwh} öre/kWh` : undefined);
                 push("Nätavgift", pp.natavgift_ore_per_kwh ? `${pp.natavgift_ore_per_kwh} öre/kWh` : undefined);
-                push("Kvartspris elhandel", pp.kvartspris_elhandel ? "Ja" : "Nej");
+                push("PT15M-pris elhandel", pp.kvartspris_elhandel ? "Ja" : "Nej");
                 return rows.map(([label, value]) => (
                   <div key={label} className="flex flex-col">
                     <dt className="text-muted-foreground">{label}</dt>
