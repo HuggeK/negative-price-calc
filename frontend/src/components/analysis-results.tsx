@@ -33,7 +33,6 @@ import {
   ArrowDownCircle,
 } from "lucide-react";
 import { PriceChart } from "./price-chart";
-import { PriceLineChart } from "./price-line-chart";
 import { LossChart } from "./loss-chart";
 import { FuseChart } from "./fuse-chart";
 
@@ -368,8 +367,6 @@ const GRID_INFO =
   "Hur ofta din exporteffekt nådde huvudsäkringens gräns (kapade toppar). Diagrammet visar daglig toppeffekt mot säkringsgränsen.";
 const POTENTIAL_PROD_INFO =
   "Grov uppskattning av hur mycket anläggningen kunde ha producerat under perioden = solinstrålning (SMHI STRÅNG) × installerad effekt (kWp) × 0,82 (riktverkningsgrad). Bygger på global horisontell instrålning, så paneltak/-riktning ignoreras – en övre referens, inte en garanti. ”export X%” = din uppmätta export delat med detta.";
-const ENERGY_AT_MAX_INFO =
-  "Energin (kWh) du matade ut under de kvartar då exporteffekten låg vid säkringstaket (≥98 % av gränsen). Det är el du faktiskt exporterade vid taket – inte kapad/förlorad produktion (den uppskattas under ”Är det värt att uppgradera huvudsäkringen?”).";
 const KVARTAR_VID_MAX_INFO =
   "Antal kvartar (15 min) då exporteffekten låg vid säkringstaket (≥98 % av gränsen). Andelen mäts mot den tid du faktiskt kan exportera: SMHI STRÅNG:s soltimmar (timmar då solen var uppe) när en plats är vald, annars de kvartar du producerade. Natten räknas inte med – du kan ändå inte exportera då.";
 const PEAK_POWER_INFO =
@@ -685,7 +682,7 @@ export function AnalysisResults({
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <div className="text-2xl font-bold font-mono">
                   {formatNumber(data.natanslutning.intervaller_vid_max)}{" "}
@@ -704,15 +701,6 @@ export function AnalysisResults({
                 <p className="flex items-center gap-1 text-sm text-muted-foreground">
                   högsta uppmätta effekt
                   <InfoTooltip text={PEAK_POWER_INFO} />
-                </p>
-              </div>
-              <div>
-                <div className="text-2xl font-bold font-mono">
-                  {formatNumber(data.natanslutning.energi_vid_max_kwh, 1)} <span className="text-base">kWh</span>
-                </div>
-                <p className="flex items-center gap-1 text-sm text-muted-foreground">
-                  exporterat vid max
-                  <InfoTooltip text={ENERGY_AT_MAX_INFO} />
                 </p>
               </div>
             </div>
@@ -1174,14 +1162,9 @@ export function AnalysisResults({
         </Card>
       )}
 
-      {/* Daily overview chart */}
+      {/* Daily overview chart (net value bars + production area + daily spot-price line) */}
       {data.aggregates?.daily && data.aggregates.daily.length > 1 && (
         <PriceChart dailyData={data.aggregates.daily} />
-      )}
-
-      {/* Daily spot price chart */}
-      {data.aggregates?.daily && data.aggregates.daily.length > 1 && (
-        <PriceLineChart dailyData={data.aggregates.daily} />
       )}
 
       {/* Price parameters used for this analysis */}
