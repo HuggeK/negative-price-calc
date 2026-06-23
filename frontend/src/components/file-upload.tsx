@@ -14,8 +14,9 @@ function isValidFile(file: File): boolean {
     "text/csv",
     "application/vnd.ms-excel",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-excel.sheet.macroEnabled.12",
   ];
-  const validExtensions = [".csv", ".xlsx", ".xls"];
+  const validExtensions = [".csv", ".xlsx", ".xls", ".xlsm"];
   const extension = file.name.toLowerCase().slice(file.name.lastIndexOf("."));
   return validTypes.includes(file.type) || validExtensions.includes(extension);
 }
@@ -119,7 +120,7 @@ export function FileUpload({ onFilesSelect, selectedFiles }: FileUploadProps) {
               >
                 <Upload className="h-4 w-4" />
                 Lägg till fler filer (t.ex. fler 3-månaderschunkar)
-                <input type="file" accept=".csv,.xlsx,.xls" multiple onChange={handleFileInput} className="hidden" />
+                <input type="file" accept=".csv,.xlsx,.xls,.xlsm" multiple onChange={handleFileInput} className="hidden" />
               </label>
             </div>
           ) : (
@@ -139,7 +140,7 @@ export function FileUpload({ onFilesSelect, selectedFiles }: FileUploadProps) {
                   3-månaderschunkar.
                 </p>
               </div>
-              <input type="file" accept=".csv,.xlsx,.xls" multiple onChange={handleFileInput} className="hidden" />
+              <input type="file" accept=".csv,.xlsx,.xls,.xlsm" multiple onChange={handleFileInput} className="hidden" />
             </label>
           )}
         </CardContent>

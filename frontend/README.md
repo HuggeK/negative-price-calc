@@ -26,7 +26,8 @@ site in `out/`. Set `NEXT_PUBLIC_BASE_PATH` to `/<repo>` for a GitHub Pages proj
 
 ## Where the logic lives — `src/lib/`
 
-- `parseProduction.ts` — CSV parsing (Swedish formats; hourly / 15-min / daily)
+- `parseProduction.ts` — CSV + Excel parsing (Swedish formats; hourly / 15-min / daily)
+- `xlsx.ts` — dependency-free `.xlsx` / `.xlsm` reader (ZIP + native `DecompressionStream`)
 - `prices.ts` — elprisetjustnu.se price client (no key, CORS, SEK/kWh, 15-min)
 - `analyze.ts` — interval-aware analysis (overlap allocation), fuse flat-peak, export compensation + self-consumption valuation
 - `aiSummary.ts` — optional Swedish AI summary via OpenRouter (user-supplied key, in-browser)

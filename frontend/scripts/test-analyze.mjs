@@ -1,7 +1,12 @@
 // Sanity tests for the interval-aware analysis engine.
 // Run: node --experimental-strip-types frontend/scripts/test-analyze.mjs
 import { analyze, nextFuseStep, prevFuseStep } from "../src/lib/analyze.ts";
-import { parseProductionCsv, assessResolution, combineProduction } from "../src/lib/parseProduction.ts";
+import {
+  parseProductionCsv,
+  parseProductionXlsx,
+  assessResolution,
+  combineProduction,
+} from "../src/lib/parseProduction.ts";
 
 let failures = 0;
 function approx(actual, expected, label, eps = 1e-6) {
@@ -524,6 +529,174 @@ console.log("Test 17: fuse downgrade");
   // No lower-fee given -> no block.
   const r2 = analyze(prod, prices, { fuseAmps: 20 });
   eq(r2.sakringsnedgradering, undefined, "downgrade: omitted without lower fee");
+}
+
+// --- Helpers: build a minimal .xlsx (ZIP of XML parts) in memory for parser tests ---
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(bytes) {
+  let c = 0xffffffff;
+  for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+async function deflateRaw(bytes) {
+  const cs = new CompressionStream("deflate-raw");
+  const stream = new Blob([bytes]).stream().pipeThrough(cs);
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+async function buildXlsx(parts) {
+  const enc = new TextEncoder();
+  const files = parts.map((p) => ({ name: p.name, raw: enc.encode(p.xml) }));
+  const chunks = [];
+  const central = [];
+  let offset = 0;
+  for (const f of files) {
+    const comp = await deflateRaw(f.raw);
+    const crc = crc32(f.raw);
+    const nameBytes = enc.encode(f.name);
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true);
+    lh.setUint16(4, 20, true); // version needed
+    lh.setUint16(6, 0, true); // flags
+    lh.setUint16(8, 8, true); // method = deflate
+    lh.setUint32(14, crc, true);
+    lh.setUint32(18, comp.length, true);
+    lh.setUint32(22, f.raw.length, true);
+    lh.setUint16(26, nameBytes.length, true);
+    chunks.push(new Uint8Array(lh.buffer), nameBytes, comp);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true);
+    ch.setUint16(4, 20, true);
+    ch.setUint16(6, 20, true);
+    ch.setUint16(10, 8, true);
+    ch.setUint32(16, crc, true);
+    ch.setUint32(20, comp.length, true);
+    ch.setUint32(24, f.raw.length, true);
+    ch.setUint16(28, nameBytes.length, true);
+    ch.setUint32(42, offset, true);
+    central.push({ header: new Uint8Array(ch.buffer), nameBytes });
+    offset += 30 + nameBytes.length + comp.length;
+  }
+  const cdStart = offset;
+  let cdSize = 0;
+  for (const c of central) {
+    chunks.push(c.header, c.nameBytes);
+    cdSize += c.header.length + c.nameBytes.length;
+  }
+  const eocd = new DataView(new ArrayBuffer(22));
+  eocd.setUint32(0, 0x06054b50, true);
+  eocd.setUint16(8, files.length, true);
+  eocd.setUint16(10, files.length, true);
+  eocd.setUint32(12, cdSize, true);
+  eocd.setUint32(16, cdStart, true);
+  chunks.push(new Uint8Array(eocd.buffer));
+  const total = chunks.reduce((s, c) => s + c.length, 0);
+  const out = new Uint8Array(total);
+  let pos = 0;
+  for (const c of chunks) {
+    out.set(c, pos);
+    pos += c.length;
+  }
+  return out.buffer;
+}
+const WORKBOOK_RELS =
+  '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+  '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
+  '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+  "</Relationships>";
+function inlineCell(ref, text) {
+  return `<c r="${ref}" t="inlineStr"><is><t>${text}</t></is></c>`;
+}
+function numCell(ref, value, style) {
+  return `<c r="${ref}"${style != null ? ` s="${style}"` : ""}><v>${value}</v></c>`;
+}
+function sheetXml(rows) {
+  const body = rows
+    .map((cells, i) => `<row r="${i + 1}">${cells.join("")}</row>`)
+    .join("");
+  return (
+    '<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+    `<sheetData>${body}</sheetData></worksheet>`
+  );
+}
+function workbookXml(sheetName) {
+  return (
+    '<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' +
+    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+    `<sheets><sheet name="${sheetName}" sheetId="1" r:id="rId1"/></sheets></workbook>`
+  );
+}
+
+// --- Test 18: generic .xlsx table (date serials + numeric values) ---
+console.log("Test 18: xlsx generic table + serial dates");
+{
+  const styles =
+    '<?xml version="1.0"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+    '<cellXfs count="2"><xf numFmtId="0"/><xf numFmtId="14" applyNumberFormat="1"/></cellXfs></styleSheet>';
+  const epoch = Date.UTC(1899, 11, 30);
+  const serial = (ms) => (ms - epoch) / 86400000;
+  const day0 = Date.UTC(2025, 5, 1, 0, 0, 0); // 2025-06-01
+  const rows = [[inlineCell("A1", "Datum"), inlineCell("B1", "Värde")]];
+  for (let h = 0; h < 4; h++) {
+    const s = serial(day0 + h * H);
+    rows.push([numCell(`A${h + 2}`, s, 1), numCell(`B${h + 2}`, (h + 1).toString())]);
+  }
+  const buf = await buildXlsx([
+    { name: "[Content_Types].xml", xml: '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>' },
+    { name: "xl/workbook.xml", xml: workbookXml("Blad1") },
+    { name: "xl/_rels/workbook.xml.rels", xml: WORKBOOK_RELS },
+    { name: "xl/styles.xml", xml: styles },
+    { name: "xl/worksheets/sheet1.xml", xml: sheetXml(rows) },
+  ]);
+  const p = await parseProductionXlsx(buf, "general.xlsx");
+  eq(p.rows.length, 4, "xlsx generic: 4 rows parsed");
+  eq(p.granularity, "hourly", "xlsx generic: hourly granularity");
+  approx(p.rows[0].start, day0, "xlsx generic: first serial date decoded to 2025-06-01 00:00");
+  approx(p.rows[0].kwh, 1, "xlsx generic: first value");
+  approx(p.rows[3].kwh, 4, "xlsx generic: last value");
+}
+
+// --- Test 19: "El Rapport" template (hidden Serie matrix, formula-only month tabs) ---
+console.log("Test 19: xlsx El Rapport Serie matrix");
+{
+  // Header row 2 names the months; January sits at col L (index 12), February col M (13).
+  // Data rows below: 24 consecutive rows per day (hour 0..23). We give day 1 hours 0..2.
+  const rows = [];
+  rows.push([inlineCell("A1", "2025")]); // year, top-left
+  // Full month header row at cols L..W (Jan..Dec), as in the real template.
+  const MONTHS = ["januari","Februari","Mars","April","Maj","Juni","Juli","Augusti","September","Oktober","November","December"];
+  const MONTH_COLS = ["L","M","N","O","P","Q","R","S","T","U","V","W"];
+  rows.push(MONTHS.map((name, i) => inlineCell(`${MONTH_COLS[i]}2`, name))); // month headers
+  // Day 1, hours 0..2 for January (col L) and February (col M).
+  rows.push([numCell("L3", "3.262"), numCell("M3", "9.9")]); // hour 0
+  rows.push([numCell("L4", "1.13"), numCell("M4", "8.8")]); // hour 1
+  rows.push([numCell("L5", "6.768"), numCell("M5", "7.7")]); // hour 2
+  const buf = await buildXlsx([
+    { name: "xl/workbook.xml", xml: workbookXml("Serie") },
+    { name: "xl/_rels/workbook.xml.rels", xml: WORKBOOK_RELS.replace(/<Relationship Id="rId2"[^/]*\/>/, "") },
+    { name: "xl/worksheets/sheet1.xml", xml: sheetXml(rows) },
+  ]);
+  const p = await parseProductionXlsx(buf, "El_Rapport.xlsm");
+  // 3 hours for January + 3 for February = 6 rows.
+  eq(p.rows.length, 6, "El Rapport: 6 hourly values reconstructed");
+  const jan0 = p.rows.find((r) => {
+    const d = new Date(r.start);
+    return d.getUTCMonth() === 0 && d.getUTCDate() === 1 && d.getUTCHours() === 0;
+  });
+  approx(jan0.kwh, 3.262, "El Rapport: Jan-01 00:00 = 3.262 (Serie!L3)");
+  const feb1 = p.rows.find((r) => {
+    const d = new Date(r.start);
+    return d.getUTCMonth() === 1 && d.getUTCDate() === 1 && d.getUTCHours() === 1;
+  });
+  approx(feb1.kwh, 8.8, "El Rapport: Feb-01 01:00 = 8.8 (Serie!M4)");
+  eq(p.granularity, "hourly", "El Rapport: hourly granularity");
 }
 
 console.log(failures === 0 ? "\nALL PASSED" : `\n${failures} FAILURE(S)`);
