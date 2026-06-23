@@ -77,7 +77,7 @@ const EXAMPLE_SETTINGS: typeof DEFAULT_SETTINGS = {
   selectedArea: "SE_4",
   fuseAmps: "25",
   vatRate: "25",
-  vatRegistered: true,
+  vatRegistered: false,
   gridFixedOre: "10,01",
   gridPct: "5",
   traderFixedOre: "7",
