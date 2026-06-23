@@ -18,6 +18,7 @@ import { X, Sparkles, Loader2, ChevronDown, Upload } from "lucide-react";
 import { Header } from "@/components/header";
 import { FileUpload } from "@/components/file-upload";
 import { LocationPicker } from "@/components/location-picker";
+import { fetchStrangGlobalRadiation, sunlitHourKeysStockholm, withinStrangCoverage } from "@/lib/strang";
 import { StreamingTerminal, LogEntry } from "@/components/streaming-terminal";
 import { AnalysisResults } from "@/components/analysis-results";
 import { parseProductionCsv, assessResolution, combineProduction } from "@/lib/parseProduction";
@@ -339,10 +340,28 @@ export default function Home() {
         `Hämtade ${priceData.intervals.length} prispunkter (${GRANULARITY_LABEL[priceData.granularity] ?? priceData.granularity}).`
       );
 
+      // Optional: SMHI STRÅNG sunlit hours, so the daily spot chart can average over only the
+      // hours the sun was up (when you could export). Needs a position; falls back gracefully.
+      let sunlitHourKeys: Set<string> | undefined;
+      const latN = parseFloat(latitude.replace(",", "."));
+      const lonN = parseFloat(longitude.replace(",", "."));
+      if (Number.isFinite(latN) && Number.isFinite(lonN) && withinStrangCoverage(latN, lonN)) {
+        try {
+          addLog("info", "Hämtar SMHI STRÅNG-solinstrålning (soltimmar)...");
+          const pts = await fetchStrangGlobalRadiation(latN, lonN, startMs, endMs, { signal });
+          sunlitHourKeys = sunlitHourKeysStockholm(pts);
+          addLog("success", `STRÅNG: ${sunlitHourKeys.size} soltimmar i perioden – dagligt snittpris baseras på dessa.`);
+        } catch (e) {
+          if (e instanceof Error && e.name === "AbortError") throw e;
+          addLog("warning", "Kunde inte hämta STRÅNG; dagligt snittpris baseras på din export i stället.");
+        }
+      }
+
       addLog("info", "Beräknar analys (intervallmedveten)...");
       const analysis = analyze(parsed.rows, priceData.intervals, {
         productionGranularity: parsed.granularity,
         priceGranularity: priceData.granularity,
+        sunlitHourKeys,
         fuseAmps: fuseAmps ? Number(fuseAmps) : undefined,
         vatRate: numOrUndef(vatRate),
         vatRegistered,
@@ -427,7 +446,7 @@ export default function Home() {
     } finally {
       setIsAnalyzing(false);
     }
-  }, [selectedFiles, selectedArea, fuseAmps, vatRate, vatRegistered, gridFixedOre, gridPct, traderFixedOre, traderPct, gridMonthlyFee, nextFuseFee, installedKwp, traderMonthlyFee, energyTaxOre, gridFeeOre, traderQuarterPrice, aiInsights, aiKey, addLog]);
+  }, [selectedFiles, selectedArea, fuseAmps, vatRate, vatRegistered, gridFixedOre, gridPct, traderFixedOre, traderPct, gridMonthlyFee, nextFuseFee, installedKwp, latitude, longitude, traderMonthlyFee, energyTaxOre, gridFeeOre, traderQuarterPrice, aiInsights, aiKey, addLog]);
 
   // Run analysis immediately (report shown in-browser). Subscription is optional and,
   // when opted in, submitted best-effort without blocking the analysis.

@@ -1129,10 +1129,13 @@ export function AnalysisResults({
               nyckel). Endast vald position (latitud/longitud) och datumintervall skickas – ingen av dina data lämnar webbläsaren.
             </p>
             <p>
-              <span className="text-foreground">Var:</span> används i inställningarnas platsväljare
-              (&quot;Hämta solinstrålning&quot;) för att visa periodens instrålning (kWh/m²) och, med din installerade effekt
-              (kWp), en grov uppskattad potentiell produktion (instrålning × kWp × 0,82). Det är en oberoende referens och
-              påverkar inte intäkts-/exportsiffrorna ovan, som bygger på din uppmätta export.
+              <span className="text-foreground">Var:</span> (1) i diagrammet
+              <span className="text-foreground"> &quot;Dagligt spotpris under soltimmar&quot;</span> – när en plats är vald
+              används STRÅNG för att avgöra vilka timmar solen var uppe (instrålning &gt; 0), så snittspotpriset per dag
+              räknas bara över de timmar du faktiskt kan exportera (inte natten och inte ett tidssnitt över dygnet).
+              (2) i inställningarnas platsväljare (&quot;Hämta solinstrålning&quot;) för periodens instrålning (kWh/m²) och,
+              med din effekt (kWp), en grov uppskattad potentiell produktion (instrålning × kWp × 0,82). STRÅNG påverkar
+              inte intäkts-/exportkronorna – de bygger på din uppmätta export.
             </p>
           </div>
           <p>All analys körs i din webbläsare – inga filer eller resultat skickas till någon server.</p>

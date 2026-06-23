@@ -18,6 +18,7 @@ interface DailyData {
   date?: string;
   production_kwh?: number;
   revenue_sek?: number;
+  spot_sunlit_sek_per_kwh?: number;
 }
 
 interface PriceLineChartProps {
@@ -28,11 +29,16 @@ interface PriceLineChartProps {
 const MONTHS = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "okt", "nov", "dec"];
 
 /**
- * Daily realized spot price (öre/kWh) over the period — the production-weighted average
- * spot you actually exported at each day. Dips below the zero line mark days when the
- * spot price went negative while you were producing.
+ * Daily spot price (öre/kWh) over the period. When SMHI STRÅNG sunlit-hour data is available
+ * the daily value is the mean spot over the hours the sun was up (when you could export);
+ * otherwise it falls back to the production-weighted spot you actually exported at. Dips below
+ * the zero line mark days when the spot price went negative during those hours.
  */
-export function PriceLineChart({ dailyData, title = "Dagligt spotpris (snitt)" }: PriceLineChartProps) {
+export function PriceLineChart({ dailyData, title }: PriceLineChartProps) {
+  const usesSunlit = useMemo(
+    () => !!dailyData?.some((d) => d.spot_sunlit_sek_per_kwh != null),
+    [dailyData]
+  );
   const chartData = useMemo(() => {
     if (!dailyData || dailyData.length === 0) return [];
     return dailyData
@@ -41,19 +47,23 @@ export function PriceLineChart({ dailyData, title = "Dagligt spotpris (snitt)" }
         const date = item.date || "";
         const [, m, d] = date.split("-");
         const label = m && d ? `${parseInt(d, 10)} ${MONTHS[parseInt(m, 10) - 1]}` : date;
-        const ore = ((item.revenue_sek || 0) / (item.production_kwh || 1)) * 100;
+        const ore =
+          item.spot_sunlit_sek_per_kwh != null
+            ? item.spot_sunlit_sek_per_kwh * 100
+            : ((item.revenue_sek || 0) / (item.production_kwh || 1)) * 100;
         return { name: label, fullDate: date, ore: Math.round(ore * 10) / 10 };
       });
   }, [dailyData]);
 
   if (chartData.length === 0) return null;
+  const heading = title ?? (usesSunlit ? "Dagligt spotpris under soltimmar (SMHI)" : "Dagligt spotpris (snitt)");
 
   return (
     <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center gap-2">
           <LineChartIcon className="h-5 w-5 text-primary" />
-          <CardTitle className="text-lg">{title}</CardTitle>
+          <CardTitle className="text-lg">{heading}</CardTitle>
         </div>
       </CardHeader>
       <CardContent>
@@ -89,7 +99,9 @@ export function PriceLineChart({ dailyData, title = "Dagligt spotpris (snitt)" }
           </ResponsiveContainer>
         </div>
         <p className="mt-3 text-center text-sm text-muted-foreground">
-          Produktionsviktat snittpris per dag. Linjen under noll = dagar då spotpriset var negativt medan du producerade.
+          {usesSunlit
+            ? "Snittspot per dag över soltimmarna (SMHI STRÅNG, instrålning > 0) – priset under fönstret då du faktiskt kan exportera. Linjen under noll = negativt pris under soltimmar."
+            : "Produktionsviktat snittpris per dag. Linjen under noll = dagar då spotpriset var negativt medan du producerade. Tips: välj en plats i inställningarna för att basera snittet på soltimmar (SMHI STRÅNG)."}
         </p>
       </CardContent>
     </Card>

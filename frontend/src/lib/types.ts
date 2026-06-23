@@ -113,6 +113,8 @@ export interface AnalysisResult {
       revenue_sek: number;
       negative_kwh: number;
       negative_value_sek: number;
+      /** Mean spot over "exportable" (sunlit) hours that day, from SMHI STRÅNG (if available). */
+      spot_sunlit_sek_per_kwh?: number;
     }>;
   };
   /**

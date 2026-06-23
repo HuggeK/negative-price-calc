@@ -445,5 +445,29 @@ console.log("Test 14: asymmetric VAT");
   approx(reg.sjalvkonsumtion.export_varde_sek_per_kwh, 1.375, "self export ref incl moms");
 }
 
+// --- Test 15: daily spot averaged over STRÅNG sunlit hours ---
+console.log("Test 15: daily spot over sunlit hours");
+{
+  const prod = [];
+  const prices = [];
+  for (let h = 0; h < 4; h++) {
+    prod.push({ start: base + h * H, end: base + (h + 1) * H, kwh: 1 });
+    prices.push({ start: base + h * H, end: base + (h + 1) * H, sekPerKwh: h + 1, eurPerKwh: 0 });
+  }
+  // Mark only hours 01 and 02 as sunlit (spots 2 and 3).
+  const sunlit = new Set(["2025-11-03T01", "2025-11-03T02"]);
+  const r = analyze(prod, prices, {
+    productionGranularity: "hourly",
+    priceGranularity: "hourly",
+    sunlitHourKeys: sunlit,
+  });
+  const day = r.aggregates.daily.find((d) => d.date === "2025-11-03");
+  approx(day.spot_sunlit_sek_per_kwh, 2.5, "sunlit: daily avg over sunlit hours = (2+3)/2");
+
+  const r2 = analyze(prod, prices, { productionGranularity: "hourly", priceGranularity: "hourly" });
+  const day2 = r2.aggregates.daily.find((d) => d.date === "2025-11-03");
+  eq(day2.spot_sunlit_sek_per_kwh, undefined, "no sunlit set -> field undefined");
+}
+
 console.log(failures === 0 ? "\nALL PASSED" : `\n${failures} FAILURE(S)`);
 process.exit(failures === 0 ? 0 : 1);

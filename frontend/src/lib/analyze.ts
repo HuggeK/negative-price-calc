@@ -82,6 +82,12 @@ export interface AnalyzeOptions {
    * min(next fuse limit, kWp). If kWp ≤ the current fuse limit, the fuse isn't the bottleneck.
    */
   installedKwp?: number;
+  /**
+   * Set of "exportable" (sunlit) local hour keys ("YYYY-MM-DDTHH", Europe/Stockholm) from SMHI
+   * STRÅNG — hours where solar irradiance > 0. When provided, the daily spot price series is
+   * averaged over only these hours (when you could export) instead of being production-weighted.
+   */
+  sunlitHourKeys?: Set<string>;
 }
 
 /** Standard Swedish main-fuse ratings (amperes), in ascending order. */
@@ -476,14 +482,30 @@ export function analyze(
   }
 
   // Count of price intervals that were negative across the covered range (regardless of
-  // whether we were producing) — informative "negativa intervaller totalt".
+  // whether we were producing) — informative "negativa intervaller totalt". In the same pass,
+  // accumulate the daily spot price over "exportable" (sunlit) hours when a STRÅNG sunlit-hour
+  // set is supplied: a duration-weighted mean of spot over the hours the sun is up — i.e. the
+  // price environment during the window you could actually export, independent of your volume.
   const prodStart = sortedProd[0].start;
   const prodEnd = sortedProd[sortedProd.length - 1].end;
+  const sunlit = opts.sunlitHourKeys;
+  const dailySunlit = new Map<string, { sum: number; hours: number }>();
   let negativeIntervalsTotal = 0;
   for (const q of sortedPrice) {
-    if (q.sekPerKwh >= 0) continue;
     const overlapMs = Math.min(prodEnd, q.end) - Math.max(prodStart, q.start);
-    if (overlapMs > 0) negativeIntervalsTotal += 1;
+    if (overlapMs <= 0) continue;
+    if (q.sekPerKwh < 0) negativeIntervalsTotal += 1;
+    if (sunlit) {
+      const hourKey = new Date(q.start).toISOString().slice(0, 13); // local wall-clock "YYYY-MM-DDTHH"
+      if (sunlit.has(hourKey)) {
+        const hrs = overlapMs / MS_PER_HOUR;
+        const d = dateStr(q.start);
+        const acc = dailySunlit.get(d) ?? { sum: 0, hours: 0 };
+        acc.sum += q.sekPerKwh * hrs;
+        acc.hours += hrs;
+        dailySunlit.set(d, acc);
+      }
+    }
   }
 
   const realizedPrice = totalMatchedKwh > 0 ? revenueSek / totalMatchedKwh : 0;
@@ -504,13 +526,17 @@ export function analyze(
 
   const daily = [...days.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([date, d]) => ({
-      date,
-      production_kwh: round(d.production_kwh, 3),
-      revenue_sek: round(d.revenue_sek, 2),
-      negative_kwh: round(d.negative_kwh, 3),
-      negative_value_sek: round(d.negative_value_sek, 2),
-    }));
+    .map(([date, d]) => {
+      const sl = dailySunlit.get(date);
+      return {
+        date,
+        production_kwh: round(d.production_kwh, 3),
+        revenue_sek: round(d.revenue_sek, 2),
+        negative_kwh: round(d.negative_kwh, 3),
+        negative_value_sek: round(d.negative_value_sek, 2),
+        spot_sunlit_sek_per_kwh: sl && sl.hours > 0 ? round(sl.sum / sl.hours, 4) : undefined,
+      };
+    });
 
   // Monthly forecast: for each month with FULL data coverage, project what to expect.
   // Effective compensation aggregates affinely from the month's spot revenue and energy;

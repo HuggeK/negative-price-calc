@@ -63,6 +63,34 @@ export function irradianceKwhPerM2(points: StrangPoint[]): number {
 }
 
 /**
+ * Build a set of "exportable" (sunlit) hour keys from STRÅNG points: every hour with
+ * irradiance > 0. STRÅNG timestamps are UTC; the analysis works in Europe/Stockholm
+ * wall-clock, so each point is converted to a local "YYYY-MM-DDTHH" key (matching how the
+ * engine keys price intervals). Used to average the daily spot price over only the hours the
+ * sun is actually up — i.e. when you could export.
+ */
+export function sunlitHourKeysStockholm(points: StrangPoint[]): Set<string> {
+  const fmt = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Europe/Stockholm",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hour12: false,
+  });
+  const keys = new Set<string>();
+  for (const p of points) {
+    if (!(p.wm2 > 0)) continue;
+    const parts = fmt.formatToParts(new Date(p.time));
+    const get = (t: string) => parts.find((x) => x.type === t)?.value ?? "";
+    let h = get("hour");
+    if (h === "24") h = "00"; // some locales emit 24 for midnight
+    keys.add(`${get("year")}-${get("month")}-${get("day")}T${h}`);
+  }
+  return keys;
+}
+
+/**
  * Rough PV potential energy (kWh) from plane irradiation: kWh ≈ irradiation(kWh/m²) × kWp × PR.
  * Uses global *horizontal* irradiance (so it ignores panel tilt/orientation) and a default
  * performance ratio of 0.82 — an estimate, not a guarantee.
