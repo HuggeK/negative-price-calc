@@ -245,7 +245,8 @@ const SQRT3 = Math.sqrt(3);
 function analyzeFusePeaks(
   production: ProductionInterval[],
   fuseAmps: number,
-  voltage: number
+  voltage: number,
+  sunlitHourKeys?: Set<string>
 ): NonNullable<AnalysisResult["natanslutning"]> {
   const limitKw = (SQRT3 * voltage * fuseAmps) / 1000;
   const threshold = limitKw * MAXED_FRACTION;
@@ -253,14 +254,18 @@ function analyzeFusePeaks(
   let energyAtMax = 0;
   let peakKw = 0;
   let intervalsAtMax = 0;
-  let totalIntervals = 0;
+  let producingIntervals = 0; // quarters with export > 0
+  let sunlitIntervals = 0; // quarters when the sun was up (STRÅNG irradiance > 0)
   const dailyPeak = new Map<string, number>(); // date -> peak export power (kW)
 
   for (const p of production) {
     const hours = (p.end - p.start) / MS_PER_HOUR;
     if (hours <= 0) continue;
-    totalIntervals += 1;
     const powerKw = p.kwh / hours;
+    if (p.kwh > 0) producingIntervals += 1;
+    if (sunlitHourKeys && sunlitHourKeys.has(new Date(p.start).toISOString().slice(0, 13))) {
+      sunlitIntervals += 1;
+    }
     if (powerKw > peakKw) peakKw = powerKw;
     if (powerKw >= threshold) {
       intervalsAtMax += 1;
@@ -274,12 +279,20 @@ function analyzeFusePeaks(
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([date, kw]) => ({ date, peak_kw: round(kw, 2) }));
 
+  // "Share of time at the cap" is measured against the time you could actually export:
+  // the sunlit quarters (STRÅNG) when available, otherwise the quarters you were producing.
+  // Counting all 24 h (incl. night) would understate how often the fuse is the bottleneck.
+  const sunlitBased = sunlitHourKeys != null && sunlitIntervals > 0;
+  const denom = sunlitBased ? sunlitIntervals : producingIntervals;
+
   return {
     sakring_amp: fuseAmps,
     sakring_kw: round(limitKw, 2),
     hogsta_effekt_kw: round(peakKw, 2),
     intervaller_vid_max: intervalsAtMax,
-    andel_tid_vid_max_pct: round(totalIntervals > 0 ? (intervalsAtMax / totalIntervals) * 100 : 0, 1),
+    andel_tid_vid_max_pct: round(denom > 0 ? (intervalsAtMax / denom) * 100 : 0, 1),
+    andel_bas_soltimmar: sunlitBased,
+    namnare_kvartar: denom,
     energi_vid_max_kwh: round(energyAtMax, 2),
     serie,
   };
@@ -595,7 +608,7 @@ export function analyze(
 
   const natanslutning =
     opts.fuseAmps && opts.fuseAmps > 0
-      ? analyzeFusePeaks(sortedProd, opts.fuseAmps, opts.voltage ?? 400)
+      ? analyzeFusePeaks(sortedProd, opts.fuseAmps, opts.voltage ?? 400, opts.sunlitHourKeys)
       : undefined;
 
   // Fuse upgrade: weigh the extra annual grid subscription fee against the (optimistic)

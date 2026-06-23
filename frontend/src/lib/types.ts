@@ -78,6 +78,18 @@ export interface AnalysisResult {
     effektivt_pris_sek_per_kwh: number;
     varde_sek: number;
   }>;
+  /**
+   * SMHI STRÅNG solar context for the period (attached by the UI when a position is set):
+   * total global horizontal irradiance and a rough potential PV production estimate.
+   */
+  solinstralning?: {
+    kwh_per_m2: number;
+    /** ≈ irradiation × kWp × 0.82; present only when installed kWp is given. */
+    potentiell_produktion_kwh?: number;
+    kwp?: number;
+    from?: string;
+    to?: string;
+  };
   /** Echo of the settings used (display units), attached by the UI for export/display. */
   parametrar?: {
     elomrade?: string;
@@ -226,7 +238,12 @@ export interface AnalysisResult {
     hogsta_effekt_kw: number;
     /** Count of intervals (≈ quarters) at/above the fuse limit. */
     intervaller_vid_max: number;
+    /** Share of *exportable* quarters spent at the cap (see andel_bas_soltimmar / namnare_kvartar). */
     andel_tid_vid_max_pct: number;
+    /** True if the share is measured over STRÅNG sunlit quarters; false = over producing quarters. */
+    andel_bas_soltimmar: boolean;
+    /** Denominator used for the share (sunlit or producing quarters). */
+    namnare_kvartar: number;
     energi_vid_max_kwh: number;
     /** Daily peak export power (kW), for charting against the fuse limit. */
     serie: Array<{ date: string; peak_kw: number }>;

@@ -469,5 +469,27 @@ console.log("Test 15: daily spot over sunlit hours");
   eq(day2.spot_sunlit_sek_per_kwh, undefined, "no sunlit set -> field undefined");
 }
 
+// --- Test 16: "% at the cap" measured over sunlit (or producing) quarters ---
+console.log("Test 16: fuse share over sunlit/producing quarters");
+{
+  // Hours: 12,12,1,0 kWh -> powers 12,12,1,0 kW; fuse 16 A (~11.08) -> hours 0,1 at max.
+  const prod = [12, 12, 1, 0].map((kwh, h) => ({ start: base + h * H, end: base + (h + 1) * H, kwh }));
+  const prices = [0, 1, 2, 3].map((_, h) => ({ start: base + h * H, end: base + (h + 1) * H, sekPerKwh: 1, eurPerKwh: 0 }));
+
+  // No location: denominator = producing quarters (3: hours 0,1,2) -> 2/3 = 66.7%.
+  const noLoc = analyze(prod, prices, { fuseAmps: 16 }).natanslutning;
+  approx(noLoc.intervaller_vid_max, 2, "share: 2 quarters at max");
+  eq(noLoc.andel_bas_soltimmar, false, "share: not sunlit-based without location");
+  approx(noLoc.namnare_kvartar, 3, "share: denominator = producing quarters");
+  approx(noLoc.andel_tid_vid_max_pct, 66.7, "share: 2/3 of producing time");
+
+  // With STRÅNG sunlit set covering all 4 hours -> denominator 4 -> 2/4 = 50%.
+  const sunlit = new Set(["2025-11-03T00", "2025-11-03T01", "2025-11-03T02", "2025-11-03T03"]);
+  const loc = analyze(prod, prices, { fuseAmps: 16, sunlitHourKeys: sunlit }).natanslutning;
+  eq(loc.andel_bas_soltimmar, true, "share: sunlit-based with STRÅNG");
+  approx(loc.namnare_kvartar, 4, "share: denominator = sunlit quarters");
+  approx(loc.andel_tid_vid_max_pct, 50, "share: 2/4 of sunlit time");
+}
+
 console.log(failures === 0 ? "\nALL PASSED" : `\n${failures} FAILURE(S)`);
 process.exit(failures === 0 ? 0 : 1);

@@ -135,6 +135,8 @@ interface AnalysisData {
     hogsta_effekt_kw?: number;
     intervaller_vid_max?: number;
     andel_tid_vid_max_pct?: number;
+    andel_bas_soltimmar?: boolean;
+    namnare_kvartar?: number;
     energi_vid_max_kwh?: number;
     serie?: Array<{ date?: string; peak_kw?: number }>;
   };
@@ -215,6 +217,13 @@ interface AnalysisData {
     price_intervals?: number;
     production_intervals?: number;
     matched_kwh_pct?: number;
+  };
+  solinstralning?: {
+    kwh_per_m2?: number;
+    potentiell_produktion_kwh?: number;
+    kwp?: number;
+    from?: string;
+    to?: string;
   };
   parametrar?: {
     elomrade?: string;
@@ -333,10 +342,12 @@ const LOSS_INFO =
   "Kvartar då ditt effektiva pris var under noll – du betalade för att exportera. Tabellen visar de värst drabbade tillfällena.";
 const GRID_INFO =
   "Hur ofta din exporteffekt nådde huvudsäkringens gräns (kapade toppar). Diagrammet visar daglig toppeffekt mot säkringsgränsen.";
+const POTENTIAL_PROD_INFO =
+  "Grov uppskattning av hur mycket anläggningen kunde ha producerat under perioden = solinstrålning (SMHI STRÅNG) × installerad effekt (kWp) × 0,82 (riktverkningsgrad). Bygger på global horisontell instrålning, så paneltak/-riktning ignoreras – en övre referens, inte en garanti. ”export X%” = din uppmätta export delat med detta.";
 const ENERGY_AT_MAX_INFO =
   "Energin (kWh) du matade ut under de kvartar då exporteffekten låg vid säkringstaket (≥98 % av gränsen). Det är el du faktiskt exporterade vid taket – inte kapad/förlorad produktion (den uppskattas under ”Är det värt att uppgradera huvudsäkringen?”).";
 const KVARTAR_VID_MAX_INFO =
-  "Antal kvartar (15 min) då din exporteffekt låg vid säkringstaket (≥98 % av gränsen), och hur stor andel av den producerande tiden det var.";
+  "Antal kvartar (15 min) då exporteffekten låg vid säkringstaket (≥98 % av gränsen). Andelen mäts mot den tid du faktiskt kan exportera: SMHI STRÅNG:s soltimmar (timmar då solen var uppe) när en plats är vald, annars de kvartar du producerade. Natten räknas inte med – du kan ändå inte exportera då.";
 const PEAK_POWER_INFO =
   "Den högsta medeleffekten (kW) under en enskild kvart – din kraftigaste exporttopp. Jämför med säkringsgränsen i diagrammet nedan.";
 const UPGRADE_INFO =
@@ -539,6 +550,19 @@ export function AnalysisResults({
             <div className="text-2xl font-bold font-mono">
               {formatNumber(totalExport)} <span className="text-lg">kWh</span>
             </div>
+            {data.solinstralning?.potentiell_produktion_kwh != null ? (
+              <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                ≈ {formatNumber(data.solinstralning.potentiell_produktion_kwh, 0)} kWh möjlig produktion
+                {(totalExport ?? 0) > 0 && data.solinstralning.potentiell_produktion_kwh > 0
+                  ? ` · export ${formatNumber(((totalExport ?? 0) / data.solinstralning.potentiell_produktion_kwh) * 100, 0)}%`
+                  : ""}
+                <InfoTooltip text={POTENTIAL_PROD_INFO} />
+              </p>
+            ) : data.solinstralning?.kwh_per_m2 != null ? (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Instrålning {formatNumber(data.solinstralning.kwh_per_m2, 0)} kWh/m² – ange kWp för möjlig produktion.
+              </p>
+            ) : null}
           </CardContent>
         </Card>
 
@@ -642,7 +666,8 @@ export function AnalysisResults({
                   <span className="text-base">{isQuarterHour(productionGranularity) ? "kvartar" : "intervall"}</span>
                 </div>
                 <p className="flex items-center gap-1 text-sm text-muted-foreground">
-                  vid max ({formatNumber(data.natanslutning.andel_tid_vid_max_pct, 1)}% av tiden)
+                  vid max ({formatNumber(data.natanslutning.andel_tid_vid_max_pct, 1)}% av{" "}
+                  {data.natanslutning.andel_bas_soltimmar ? "soltimmarna" : "produktionstiden"})
                   <InfoTooltip text={KVARTAR_VID_MAX_INFO} />
                 </p>
               </div>
