@@ -48,6 +48,7 @@ import {
   parseProductionXlsx,
   assessResolution,
   combineProduction,
+  dropBeforeQuarterHourSwitch,
 } from "@/lib/parseProduction";
 import { fetchPrices } from "@/lib/prices";
 import { analyze, nextFuseStep, prevFuseStep } from "@/lib/analyze";
@@ -377,15 +378,32 @@ export default function Home() {
         );
         parsedParts.push(p);
       }
-      const parsed = combineProduction(parsedParts);
-      if (parsed.filesCombined > 1) {
-        if (!parsed.granularitiesMatch) {
+      const combined = combineProduction(parsedParts);
+      if (combined.filesCombined > 1) {
+        if (!combined.granularitiesMatch) {
           addLog("warning", "Filerna har olika upplösning – kombinerar ändå, men kontrollera resultatet.");
         }
         addLog(
           "info",
-          `Kombinerade ${parsed.filesCombined} filer → ${parsed.rows.length} rader` +
-            (parsed.duplicatesRemoved > 0 ? ` (${parsed.duplicatesRemoved} överlappande rader togs bort).` : ".")
+          `Kombinerade ${combined.filesCombined} filer → ${combined.rows.length} rader` +
+            (combined.duplicatesRemoved > 0 ? ` (${combined.duplicatesRemoved} överlappande rader togs bort).` : ".")
+        );
+      }
+
+      // Drop everything before 2025-10-01: spot prices were only hourly (60-min) before the
+      // Swedish 15-minute market switch, so older production can't be compared fairly.
+      const parsed = dropBeforeQuarterHourSwitch(combined);
+      if (parsed.droppedRows > 0) {
+        addLog(
+          "warning",
+          `${parsed.droppedRows} rader före 2025-10-01 togs bort – spotpriserna var i timupplösning (60 min) ` +
+            `innan dess, så äldre data går inte att jämföra rättvist mot 15-minuterspriser.`
+        );
+      }
+      if (parsed.rows.length === 0) {
+        throw new Error(
+          "All data ligger före 2025-10-01, då elmarknaden gick över till 15-minutersavräkning. " +
+            "Ladda upp produktionsdata från oktober 2025 eller senare."
         );
       }
       addLog(

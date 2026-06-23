@@ -139,6 +139,10 @@ export function FileUpload({ onFilesSelect, selectedFiles }: FileUploadProps) {
                   Eller dra och släpp CSV/Excel här. Du kan välja flera filer – nätbolag delar ofta upp 15-minutersdata i
                   3-månaderschunkar.
                 </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Obs: data före 2025-10-01 tas bort automatiskt – spotpriserna var i timupplösning (60 min) innan dess,
+                  så äldre data går inte att jämföra rättvist mot 15-minuterspriser.
+                </p>
               </div>
               <input type="file" accept=".csv,.xlsx,.xls,.xlsm" multiple onChange={handleFileInput} className="hidden" />
             </label>
