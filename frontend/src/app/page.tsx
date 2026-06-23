@@ -738,14 +738,19 @@ export default function Home() {
                 <div className="space-y-2">
                   <Label htmlFor="vat">Moms (%)</Label>
                   <Input id="vat" inputMode="decimal" value={vatRate} onChange={(e) => setVatRate(e.target.value)} placeholder="25" className="max-w-[8rem]" />
-                  <p className="text-xs text-muted-foreground">Används för både ersättningen nedan och värdet av självkonsumtion.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Används för både ersättningen nedan och värdet av självkonsumtion. Ange alla öre/kWh-värden nedan
+                    <span className="text-foreground"> exklusive moms</span> – momsen läggs på automatiskt. Sätt 0 om du inte är momsregistrerad.
+                  </p>
                 </div>
 
                 {/* Export compensation: two companies, each with a fixed + variable part */}
                 <div className="space-y-4 border-t border-border/50 pt-4">
                   <div className="space-y-1">
                     <h4 className="text-base font-semibold text-foreground">Ersättning för exporterad el</h4>
-                    <p className="text-xs text-muted-foreground">Från både ditt elnätsbolag och elhandelsbolag.</p>
+                    <p className="text-xs text-muted-foreground">
+                      Från både ditt elnätsbolag och elhandelsbolag. Alla öre-värden anges exklusive moms.
+                    </p>
                   </div>
 
                   <div className="space-y-2">
