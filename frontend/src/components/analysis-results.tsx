@@ -32,6 +32,7 @@ import {
   ArrowUpCircle,
   ArrowDownCircle,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { PriceChart } from "./price-chart";
 import { LossChart } from "./loss-chart";
 import { FuseChart } from "./fuse-chart";
@@ -382,15 +383,42 @@ const REALIZED_PRICE_INFO =
 const MARKET_AVG_INFO =
   "Enkelt snittpris (spot) över hela perioden, oavsett om du producerade just då.";
 
-/** A small info icon that reveals an explanation on hover / focus. */
+/**
+ * A small info icon that reveals an explanation. On desktop it opens on hover/focus; on
+ * touch devices (where Radix tooltips never open on hover) a tap toggles it. It's a
+ * controlled tooltip: the tap handler runs on `pointerDown` and calls `preventDefault()`,
+ * which—via Radix's composed event handlers—skips the built-in "close on pointer down" so
+ * the tap reliably toggles instead of being swallowed. Tapping outside or pressing Escape
+ * closes it.
+ */
 function InfoTooltip({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+
+  // Close when tapping/clicking anywhere that isn't this trigger or the tooltip bubble.
+  useEffect(() => {
+    if (!open) return;
+    const onDocPointerDown = (e: PointerEvent) => {
+      const t = e.target as Element | null;
+      if (t?.closest('[role="tooltip"]') || t?.closest("[data-info-tooltip-trigger]")) return;
+      setOpen(false);
+    };
+    document.addEventListener("pointerdown", onDocPointerDown, true);
+    return () => document.removeEventListener("pointerdown", onDocPointerDown, true);
+  }, [open]);
+
   return (
     <TooltipProvider delayDuration={150}>
-      <Tooltip>
+      <Tooltip open={open} onOpenChange={setOpen}>
         <TooltipTrigger asChild>
           <button
             type="button"
             aria-label="Förklaring"
+            aria-expanded={open}
+            data-info-tooltip-trigger
+            onPointerDown={(e) => {
+              e.preventDefault(); // skip Radix's close-on-pointer-down so the tap toggles
+              setOpen((o) => !o);
+            }}
             className="inline-flex align-middle text-muted-foreground hover:text-foreground"
           >
             <Info className="h-3.5 w-3.5" />
