@@ -128,22 +128,28 @@ export function LocationPicker({ lat, lon, onChange, kwp, periodStartMs, periodE
         </Select>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-2">
+      <div className="flex items-end gap-2">
+        <div className="flex-1 space-y-2">
           <Label htmlFor="lat">Latitud</Label>
           <Input id="lat" inputMode="decimal" value={lat} onChange={(e) => onChange(e.target.value, lon)} placeholder="59.33" />
         </div>
-        <div className="space-y-2">
+        <div className="flex-1 space-y-2">
           <Label htmlFor="lon">Longitud</Label>
           <Input id="lon" inputMode="decimal" value={lon} onChange={(e) => onChange(lat, e.target.value)} placeholder="18.07" />
         </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          onClick={useMyLocation}
+          title="Använd min plats"
+          aria-label="Använd min plats"
+        >
+          <LocateFixed className="h-4 w-4" />
+        </Button>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <Button type="button" variant="outline" size="sm" onClick={useMyLocation}>
-          <LocateFixed className="mr-2 h-4 w-4" />
-          Använd min plats
-        </Button>
+      <div>
         <Button type="button" variant="outline" size="sm" onClick={fetchIrradiance} disabled={!inCoverage || state.loading}>
           {state.loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sun className="mr-2 h-4 w-4" />}
           Hämta solinstrålning

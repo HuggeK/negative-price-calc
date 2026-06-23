@@ -7,8 +7,45 @@ one hour". These helpers infer the per-row interval length so energy/cost sums a
 """
 
 from dataclasses import dataclass
+from typing import List, Tuple
 
 import pandas as pd
+
+
+def combine_production(parts: List[pd.DataFrame]) -> Tuple[pd.DataFrame, dict]:
+    """Combine several production DataFrames into one continuous, de-duplicated series.
+
+    Swedish grid companies often cap 15-minute export downloads at ~3 months at a time, so a
+    full year arrives as several files. Rows are concatenated, sorted by timestamp, and
+    de-duplicated by index (chunk boundaries may overlap by a row or two; the first is kept).
+    Mirrors ``combineProduction`` in the TypeScript ``parseProduction.ts``.
+
+    Args:
+        parts: production DataFrames, each indexed by datetime with a ``production_kwh`` column.
+
+    Returns:
+        (combined_df, info) where info has ``files_combined``, ``duplicates_removed`` and
+        ``granularities_match`` (whether every part had the same inferred step).
+    """
+    parts = [p for p in parts if p is not None and len(p) > 0]
+    if not parts:
+        raise ValueError("Inga produktionsdata att kombinera.")
+    if len(parts) == 1:
+        return parts[0], {"files_combined": 1, "duplicates_removed": 0, "granularities_match": True}
+
+    steps = [round(infer_step_hours(p.index), 6) for p in parts]
+    granularities_match = all(s == steps[0] for s in steps)
+
+    combined = pd.concat(parts).sort_index()
+    before = len(combined)
+    combined = combined[~combined.index.duplicated(keep="first")]
+    duplicates_removed = before - len(combined)
+
+    return combined, {
+        "files_combined": len(parts),
+        "duplicates_removed": duplicates_removed,
+        "granularities_match": granularities_match,
+    }
 
 
 def infer_step_hours(index: pd.DatetimeIndex, default: float = 1.0) -> float:

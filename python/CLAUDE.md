@@ -18,7 +18,12 @@ changes there **first**, then mirror them here and add a test. Concretely:
 |---|---|
 | `analyze.ts` (overlap allocation, fuse, export compensation, self-consumption) | `core/price_analyzer.py` `analyze_data()` |
 | `parseProduction.ts` `assessResolution()` | `core/intervals.py` `assess_resolution()` |
+| `parseProduction.ts` `combineProduction()` | `core/intervals.py` `combine_production()` |
+| `analyze.ts` `nextFuseStep()` / fuse-upgrade | `core/price_analyzer.py` `next_fuse_step()` + `fuse_upgrade` block |
 | granularity helpers | `core/intervals.py` |
+
+> Browser-only (no Python mirror): `lib/strang.ts` (SMHI STRÅNG irradiance) — it relies on
+> the model's public CORS API and is only meaningful in the static web app.
 
 **Canonical valuation** lives in `core/price_analyzer.analyze_data()`:
 - Export compensation per company: `(spot + grid_fixed + spot·grid_pct% + trader_fixed +
@@ -28,6 +33,10 @@ changes there **first**, then mirror them here and add a test. Concretely:
   (params `self_energy_tax`, `self_grid_fee`).
 - Export-at-loss: quarters where the effective price < 0 (`export_at_loss` block: count,
   break-even spot, daily series, worst-occasions rows).
+- Fuse upgrade: `fuse_upgrade` block (params `next_fuse_monthly_fee`, `installed_kwp`) — counts
+  only sustained clipping (≥2 consecutive intervals at the cap), unlocked headroom bounded by
+  `min(next fuse limit, kWp)`, valued at the effective price during those quarters, annualized
+  and weighed against the extra annual subscription (`worth_upgrading`).
 
 Note: `cli/main.py`'s `build_storytelling_payload` still carries an older inline
 self-consumption block (export baseline = spot only) and is a follow-up to align to

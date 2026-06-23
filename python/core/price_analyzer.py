@@ -1,13 +1,26 @@
 #!/usr/bin/env python3
-import pandas as pd
 import logging
-from typing import Dict, Any
+from typing import Any, Dict, Optional
+
+import numpy as np
+import pandas as pd
 
 from .intervals import infer_step_hours, interval_hours_series
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# Standard Swedish main-fuse ratings (amperes), ascending. Mirrors FUSE_LADDER in analyze.ts.
+FUSE_LADDER = [16, 20, 25, 35, 50, 63, 80, 100, 125, 160, 200, 250]
+
+
+def next_fuse_step(amps: float) -> Optional[int]:
+    """The next standard fuse rating strictly larger than ``amps`` (None if at the top)."""
+    for a in FUSE_LADDER:
+        if a > amps:
+            return a
+    return None
 
 
 class PriceAnalyzer:
@@ -116,6 +129,8 @@ class PriceAnalyzer:
         trader_pct: float = None,
         grid_monthly_fee: float = None,
         trader_monthly_fee: float = None,
+        next_fuse_monthly_fee: float = None,
+        installed_kwp: float = None,
         self_energy_tax: float = None,
         self_grid_fee: float = None,
         self_quarter_price: bool = True,
@@ -138,6 +153,10 @@ class PriceAnalyzer:
             grid_monthly_fee (float, optional): Elnät fixed monthly fee in SEK/month
                 (varies by fuse class). Used by the monthly_forecast block.
             trader_monthly_fee (float, optional): Elhandel fixed monthly fee in SEK/month.
+            next_fuse_monthly_fee (float, optional): Elnät monthly fee for the NEXT fuse size up.
+                With fuse_amps, adds the ``fuse_upgrade`` worthiness block.
+            installed_kwp (float, optional): Installed PV capacity (kWp). Bounds the upgrade
+                estimate — a bigger fuse only unlocks export up to what the panels can produce.
             self_energy_tax (float, optional): Energy tax in SEK/kWh. Adds the
                 self-consumption block.
             self_grid_fee (float, optional): Grid/transmission fee in SEK/kWh. Adds the
@@ -477,6 +496,75 @@ class PriceAnalyzer:
                     'avg_net_sek': round(sum(m['net_sek'] for m in forecast_months) / n, 2),
                 }
 
+        # Fuse upgrade ("is a bigger main fuse worth it?"). Mirrors analyze.ts
+        # sakringsuppgradering: weigh the extra annual grid subscription against the
+        # (best-case) value of export a bigger fuse would unlock during the quarters that hit
+        # the cap — counting only sustained clipping (≥2 consecutive intervals) and bounded by
+        # the installed kWp (a bigger fuse only helps up to what the panels can produce).
+        next_amp = next_fuse_step(fuse_amps) if (fuse_amps and next_fuse_monthly_fee is not None) else None
+        if next_amp is not None:
+            cur_limit_kw = (3 ** 0.5) * voltage * fuse_amps / 1000.0
+            next_limit_kw = (3 ** 0.5) * voltage * next_amp / 1000.0
+            up_threshold = cur_limit_kw * 0.98
+            achievable_kw = min(next_limit_kw, installed_kwp) if installed_kwp is not None else next_limit_kw
+            headroom_kw = max(0.0, achievable_kw - cur_limit_kw)
+
+            power = (merged_df['production_kwh'] / interval_hours).values
+            clipped = power >= up_threshold
+            ih_arr = interval_hours.values
+            # Gaps to the previous / next row, in hours (unit-safe via Timedelta).
+            ts = merged_df.index.to_series()
+            gap_prev_h = (ts - ts.shift(1)).dt.total_seconds().values / 3600.0
+            gap_next_h = (ts.shift(-1) - ts).dt.total_seconds().values / 3600.0
+            n = len(clipped)
+            sustained = np.zeros(n, dtype=bool)
+            tol_h = 1.0 / 3600.0  # 1-second tolerance on interval contiguity
+            for i in range(n):
+                if not clipped[i]:
+                    continue
+                prev_adj = i > 0 and clipped[i - 1] and abs(gap_prev_h[i] - ih_arr[i - 1]) <= tol_h
+                next_adj = i < n - 1 and clipped[i + 1] and abs(gap_next_h[i] - ih_arr[i]) <= tol_h
+                if prev_adj or next_adj:
+                    sustained[i] = True
+
+            eff_all = _effective(merged_df['price_sek_per_kwh']).values
+            unlocked_kwh_per = headroom_kw * interval_hours.values
+            unlocked_kwh = float(unlocked_kwh_per[sustained].sum())
+            unlocked_value = float((unlocked_kwh_per * eff_all)[sustained].sum())
+
+            step_h = float(interval_hours.median()) if len(interval_hours) else 1.0
+            prod_start = merged_df.index.min()
+            prod_end = merged_df.index.max() + pd.Timedelta(hours=step_h)
+            period_days = (prod_end - prod_start).total_seconds() / 86400.0
+            annual_factor = 365.0 / period_days if period_days > 0 else 0.0
+
+            cur_fee = grid_monthly_fee or 0.0
+            next_fee = next_fuse_monthly_fee or 0.0
+            extra_fee_month = next_fee - cur_fee
+            extra_fee_year = extra_fee_month * 12.0
+            unlocked_value_year = unlocked_value * annual_factor
+            net_year = unlocked_value_year - extra_fee_year
+            analysis['fuse_upgrade'] = {
+                'current_fuse_amp': fuse_amps,
+                'current_fuse_kw': round(cur_limit_kw, 2),
+                'next_fuse_amp': next_amp,
+                'next_fuse_kw': round(next_limit_kw, 2),
+                'current_fee_sek_per_month': round(cur_fee, 2),
+                'next_fee_sek_per_month': round(next_fee, 2),
+                'extra_fee_sek_per_month': round(extra_fee_month, 2),
+                'extra_fee_sek_per_year': round(extra_fee_year, 2),
+                'sustained_clip_intervals': int(sustained.sum()),
+                'installed_kwp': round(installed_kwp, 2) if installed_kwp is not None else None,
+                'limited_by_kwp': bool(installed_kwp is not None and installed_kwp < next_limit_kw),
+                'period_days': round(period_days, 1),
+                'estimated_extra_export_kwh': round(unlocked_kwh, 1),
+                'estimated_extra_value_sek': round(unlocked_value, 2),
+                'estimated_extra_export_kwh_per_year': round(unlocked_kwh * annual_factor, 1),
+                'estimated_extra_value_per_year_sek': round(unlocked_value_year, 2),
+                'net_per_year_sek': round(net_year, 2),
+                'worth_upgrading': bool(net_year > 0),
+            }
+
         # Echo the inputs used (SEK units), for traceability / export. Mirrors the web
         # app's `parametrar` block.
         analysis['parameters'] = {
@@ -487,6 +575,8 @@ class PriceAnalyzer:
             'trader_pct': trader_pct,
             'grid_monthly_fee_sek': grid_monthly_fee,
             'trader_monthly_fee_sek': trader_monthly_fee,
+            'next_fuse_monthly_fee_sek': next_fuse_monthly_fee,
+            'installed_kwp': installed_kwp,
             'self_energy_tax_sek_per_kwh': self_energy_tax,
             'self_grid_fee_sek_per_kwh': self_grid_fee,
             'self_quarter_price': self_quarter_price,

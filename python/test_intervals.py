@@ -8,14 +8,10 @@ must reflect real durations rather than row counts.
 import pandas as pd
 import pytest
 
-from core.price_analyzer import PriceAnalyzer
-from core.intervals import (
-    infer_step_hours,
-    interval_hours_series,
-    assess_resolution,
-    granularity_from_hours,
-    step_consistency_pct,
-)
+from core.intervals import (assess_resolution, combine_production,
+                            granularity_from_hours, infer_step_hours,
+                            interval_hours_series, step_consistency_pct)
+from core.price_analyzer import PriceAnalyzer, next_fuse_step
 
 
 def test_infer_step_hours_hourly_and_quarterly():
@@ -118,6 +114,83 @@ def test_no_fuse_means_no_grid_connection_block():
     production = pd.DataFrame({"production_kwh": [1.0, 1.0]}, index=idx)
     merged = PriceAnalyzer.merge_data(prices, production)
     assert "grid_connection" not in PriceAnalyzer.analyze_data(merged)
+
+
+def test_next_fuse_step():
+    assert next_fuse_step(16) == 20
+    assert next_fuse_step(20) == 25
+    assert next_fuse_step(63) == 80
+    assert next_fuse_step(250) is None
+
+
+def test_fuse_upgrade_sustained_and_kwp_bound():
+    # 8 consecutive quarters at the 16 A cap (~11.08 kW), priced positively. Next step = 20 A.
+    idx = pd.date_range("2025-07-01 11:00", periods=8, freq="15min")
+    cap_kw = (3 ** 0.5) * 400 * 16 / 1000
+    prices = pd.DataFrame({"price_eur_per_mwh": [100.0] * 8}, index=idx)  # -> 1.0 SEK/kWh @ rate 10
+    production = pd.DataFrame({"production_kwh": [cap_kw * 0.25] * 8}, index=idx)  # power == cap
+    merged = PriceAnalyzer.merge_data(prices, production, eur_sek_rate=10.0)
+
+    u = PriceAnalyzer.analyze_data(
+        merged, fuse_amps=16, vat_rate=0, grid_monthly_fee=200, next_fuse_monthly_fee=275
+    )["fuse_upgrade"]
+    assert u["next_fuse_amp"] == 20
+    assert u["sustained_clip_intervals"] == 8
+    assert u["extra_fee_sek_per_month"] == pytest.approx(75.0)
+    assert u["extra_fee_sek_per_year"] == pytest.approx(900.0)
+    assert u["estimated_extra_value_sek"] > 0
+    assert u["estimated_extra_value_per_year_sek"] > u["estimated_extra_value_sek"]  # annualized up
+
+    # Installed kWp just above the current cap shrinks the headroom drastically and flags it.
+    u2 = PriceAnalyzer.analyze_data(
+        merged, fuse_amps=16, vat_rate=0, grid_monthly_fee=200, next_fuse_monthly_fee=275, installed_kwp=11.2
+    )["fuse_upgrade"]
+    assert u2["limited_by_kwp"] is True
+    assert u2["estimated_extra_value_sek"] < u["estimated_extra_value_sek"]
+
+
+def test_fuse_upgrade_isolated_peaks_dont_count():
+    # Alternating cap / near-zero quarters -> never two at the cap in a row.
+    idx = pd.date_range("2025-07-01 11:00", periods=8, freq="15min")
+    cap_kw = (3 ** 0.5) * 400 * 16 / 1000
+    prod = [cap_kw * 0.25 if i % 2 == 0 else 0.001 for i in range(8)]
+    prices = pd.DataFrame({"price_eur_per_mwh": [100.0] * 8}, index=idx)
+    production = pd.DataFrame({"production_kwh": prod}, index=idx)
+    merged = PriceAnalyzer.merge_data(prices, production, eur_sek_rate=10.0)
+    u = PriceAnalyzer.analyze_data(
+        merged, fuse_amps=16, vat_rate=0, grid_monthly_fee=200, next_fuse_monthly_fee=275
+    )["fuse_upgrade"]
+    assert u["sustained_clip_intervals"] == 0
+    assert u["estimated_extra_value_sek"] == pytest.approx(0.0)
+
+
+def test_no_next_fuse_fee_means_no_upgrade_block():
+    idx = pd.date_range("2025-07-01", periods=2, freq="h")
+    prices = pd.DataFrame({"price_eur_per_mwh": [100.0, 100.0]}, index=idx)
+    production = pd.DataFrame({"production_kwh": [1.0, 1.0]}, index=idx)
+    merged = PriceAnalyzer.merge_data(prices, production)
+    assert "fuse_upgrade" not in PriceAnalyzer.analyze_data(merged, fuse_amps=16)
+
+
+def test_combine_production_dedup_and_sort():
+    a = pd.DataFrame(
+        {"production_kwh": [1.0, 2.0]},
+        index=pd.date_range("2025-01-01 00:00", periods=2, freq="15min"),
+    )
+    # Second chunk repeats the last row of the first (overlapping boundary), then continues.
+    b = pd.DataFrame(
+        {"production_kwh": [2.0, 3.0]},
+        index=pd.date_range("2025-01-01 00:15", periods=2, freq="15min"),
+    )
+    combined, info = combine_production([b, a])  # passed out of order on purpose
+    assert info["files_combined"] == 2
+    assert info["duplicates_removed"] == 1
+    assert info["granularities_match"] is True
+    assert list(combined["production_kwh"]) == [1.0, 2.0, 3.0]
+    assert combined.index.is_monotonic_increasing
+
+    single, info1 = combine_production([a])
+    assert info1["files_combined"] == 1 and info1["duplicates_removed"] == 0
 
 
 def test_export_compensation_and_self_consumption():
