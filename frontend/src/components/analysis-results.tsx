@@ -324,7 +324,7 @@ const NEG_QUARTERS_INFO =
 const NEG_COST_INFO =
   "Vad de negativa kvartarna kostade dig totalt (exporterad energi × det negativa priset).";
 const EXPORT_COMP_INFO =
-  "Vad du faktiskt får betalt för exporten = (spot + förlustersättning [elnät] + påslag/avdrag [elhandel]) × (1 + moms).";
+  "Vad du faktiskt får betalt för exporten = (spot + förlustersättning [elnät] + påslag/avdrag [elhandel]) × 1,25 (moms, om momsregistrerad). De rörliga delarna räknas på spotpriset i varje kvart du exporterade (produktionsviktat), inte på ett tidssnitt.";
 const FORECAST_INFO =
   "Förväntad ekonomi per hel månad: effektiv ersättning minus fasta månadsavgifter. Delmånader räknas upp till en hel månad.";
 const SELF_INFO =
@@ -813,7 +813,11 @@ export function AnalysisResults({
                 Elhandelsbolag (påslag/avdrag): {formatOreSigned(data.exportersattning.elhandel_total_sek_per_kwh)}/kWh
                 {" "}— fast {formatOreSigned(data.exportersattning.elhandel_fast_sek_per_kwh)} + rörlig {formatOreSigned(data.exportersattning.elhandel_rorlig_sek_per_kwh)} ({formatNumber(data.exportersattning.elhandel_pct, 1)}%)
               </div>
-              <div>Innan moms: {formatOre(data.exportersattning.pris_innan_moms_sek_per_kwh)}/kWh × (1 + {formatNumber(data.exportersattning.moms_pct, 0)}% moms)</div>
+              <div>
+                Innan moms: {formatOre(data.exportersattning.pris_innan_moms_sek_per_kwh)}/kWh ×{" "}
+                {(1 + (data.exportersattning.moms_pct ?? 0) / 100).toLocaleString("sv-SE", { maximumFractionDigits: 4 })}{" "}
+                {data.exportersattning.moms_pa_forsaljning ? "(moms)" : "(ingen moms – ej momsregistrerad)"}
+              </div>
             </div>
             <div className="mt-3 flex flex-wrap items-baseline gap-x-6 gap-y-1">
               <span className="text-sm">

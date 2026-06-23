@@ -575,6 +575,12 @@ export default function Home() {
     triggerDownload(blob, `prisanalys_15min_${area}.csv`);
   }, [result, selectedArea, displayMeta]);
 
+  // VAT factor shown in formula descriptions, as a Swedish decimal (25 % -> "1,25").
+  const momsFactorLabel = (() => {
+    const n = numOrUndef(vatRate);
+    return n != null ? (1 + n / 100).toLocaleString("sv-SE", { maximumFractionDigits: 4 }) : "1,25";
+  })();
+
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
@@ -809,7 +815,11 @@ export default function Home() {
                   </div>
 
                   <p className="text-xs text-muted-foreground">
-                    Fasta delar anges i öre/kWh, rörliga i % av spotpriset. <span className="text-foreground">Positivt (+)</span> = ersättning, du får mer betalt (påslag); <span className="text-foreground">negativt (−)</span> = avdrag/avgift som sänker din ersättning. Effektivt pris = (spot + förlustersättning [elnät] + påslag/avdrag [elhandel]) × (1 + moms).
+                    Fasta delar anges i öre/kWh, rörliga i % av spotpriset. <span className="text-foreground">Positivt (+)</span> = ersättning, du får mer betalt (påslag); <span className="text-foreground">negativt (−)</span> = avdrag/avgift som sänker din ersättning. Effektivt pris = (spot + förlustersättning [elnät] + påslag/avdrag [elhandel]) × {momsFactorLabel} (moms, om du är momsregistrerad).
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    De <span className="text-foreground">rörliga delarna räknas på spotpriset i varje kvart du exporterade</span>
+                    {" "}(produktionsviktat) – inte på ett tidssnitt. Det är därför andelen speglar priset just när du matade ut el.
                   </p>
                 </div>
 
@@ -844,7 +854,7 @@ export default function Home() {
                       <p className="text-xs text-muted-foreground">
                         Ange energiskatt och nätavgift <span className="text-foreground">exklusive moms</span> – momsen
                         läggs på automatiskt. Visar vad en kWh är värd om du använder den själv –
-                        (spotpris + energiskatt + nätavgift) × (1 + moms) – jämfört med att exportera den. På köpt el
+                        (spotpris + energiskatt + nätavgift) × {momsFactorLabel} – jämfört med att exportera den. På köpt el
                         räknas moms alltid. Lämna tomt för att hoppa över.
                       </p>
                       <div className="flex items-center justify-between gap-3 pt-1">
