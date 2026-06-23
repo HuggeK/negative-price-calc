@@ -684,7 +684,7 @@ export default function Home() {
                   <div className="space-y-2">
                     <Label htmlFor="next-fuse-fee">
                       Elnät månadsavgift för nästa säkring – {nextFuseStep(Number(fuseAmps))} A
-                      {" "}(≈ {Math.round((Math.sqrt(3) * 400 * Number(nextFuseStep(Number(fuseAmps)))) / 100) / 10} kW) (kr/månad)
+                      {" "}(≈ {Math.round((Math.sqrt(3) * 400 * Number(nextFuseStep(Number(fuseAmps)))) / 100) / 10} kW) (kr/mån, inkl. moms)
                     </Label>
                     <Input
                       id="next-fuse-fee"
@@ -732,16 +732,18 @@ export default function Home() {
                   <h5 className="text-sm font-medium text-foreground">Fasta månadsavgifter</h5>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-2">
-                      <Label htmlFor="grid-monthly">Elnät (kr/månad)</Label>
+                      <Label htmlFor="grid-monthly">Elnät (kr/mån, inkl. moms)</Label>
                       <Input id="grid-monthly" inputMode="decimal" value={gridMonthlyFee} onChange={(e) => setGridMonthlyFee(e.target.value)} placeholder="t.ex. 250" />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="trader-monthly">Elhandel (kr/månad)</Label>
+                      <Label htmlFor="trader-monthly">Elhandel (kr/mån, inkl. moms)</Label>
                       <Input id="trader-monthly" inputMode="decimal" value={traderMonthlyFee} onChange={(e) => setTraderMonthlyFee(e.target.value)} placeholder="t.ex. 45" />
                     </div>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Fasta abonnemangsavgifter. Elnätets avgift beror oftast på din säkringsstorlek ovan. Dras av från de uppskattade månadsintäkterna nedan.
+                    Fasta abonnemangsavgifter – ange dem <span className="text-foreground">inkl. moms</span> (som på din
+                    faktura). Till skillnad från öre-värdena dras de av rakt av från de uppskattade månadsintäkterna nedan.
+                    Elnätets avgift beror oftast på din säkringsstorlek ovan.
                   </p>
                 </div>
 
@@ -796,9 +798,14 @@ export default function Home() {
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="trader-pct">Rörlig (% av spot)</Label>
-                        <Input id="trader-pct" inputMode="decimal" value={traderPct} onChange={(e) => setTraderPct(e.target.value)} placeholder="t.ex. 0" />
+                        <Input id="trader-pct" inputMode="decimal" value={traderPct} onChange={(e) => setTraderPct(e.target.value)} placeholder="t.ex. 0 eller -4" />
                       </div>
                     </div>
+                    <p className="text-xs text-muted-foreground">
+                      Ett <span className="text-foreground">avdrag anges med minustecken</span>: en rörlig del på −4 %
+                      betyder att elhandelsbolaget drar 4 % av spotpriset (t.ex. spot − 4 %), och −2 i fast ruta ett fast
+                      avdrag på 2 öre/kWh. Positivt = påslag (du får mer betalt).
+                    </p>
                   </div>
 
                   <p className="text-xs text-muted-foreground">
@@ -826,16 +833,19 @@ export default function Home() {
                     <div className="space-y-3">
                       <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-2">
-                          <Label htmlFor="tax">Energiskatt (öre/kWh)</Label>
+                          <Label htmlFor="tax">Energiskatt (öre/kWh, ex. moms)</Label>
                           <Input id="tax" inputMode="decimal" value={energyTaxOre} onChange={(e) => setEnergyTaxOre(e.target.value)} placeholder="t.ex. 42,82" />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="fee">Nätavgift (öre/kWh)</Label>
+                          <Label htmlFor="fee">Nätavgift (öre/kWh, ex. moms)</Label>
                           <Input id="fee" inputMode="decimal" value={gridFeeOre} onChange={(e) => setGridFeeOre(e.target.value)} placeholder="t.ex. 25" />
                         </div>
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        Visar vad en kWh är värd om du använder den själv – (spotpris + energiskatt + nätavgift) × (1 + moms) – jämfört med att exportera den. Lämna tomt för att hoppa över.
+                        Ange energiskatt och nätavgift <span className="text-foreground">exklusive moms</span> – momsen
+                        läggs på automatiskt. Visar vad en kWh är värd om du använder den själv –
+                        (spotpris + energiskatt + nätavgift) × (1 + moms) – jämfört med att exportera den. På köpt el
+                        räknas moms alltid. Lämna tomt för att hoppa över.
                       </p>
                       <div className="flex items-center justify-between gap-3 pt-1">
                         <Label htmlFor="quarter-price" className="text-sm font-normal cursor-pointer">
