@@ -333,6 +333,12 @@ const LOSS_INFO =
   "Kvartar då ditt effektiva pris var under noll – du betalade för att exportera. Tabellen visar de värst drabbade tillfällena.";
 const GRID_INFO =
   "Hur ofta din exporteffekt nådde huvudsäkringens gräns (kapade toppar). Diagrammet visar daglig toppeffekt mot säkringsgränsen.";
+const ENERGY_AT_MAX_INFO =
+  "Energin (kWh) du matade ut under de kvartar då exporteffekten låg vid säkringstaket (≥98 % av gränsen). Det är el du faktiskt exporterade vid taket – inte kapad/förlorad produktion (den uppskattas under ”Är det värt att uppgradera huvudsäkringen?”).";
+const KVARTAR_VID_MAX_INFO =
+  "Antal kvartar (15 min) då din exporteffekt låg vid säkringstaket (≥98 % av gränsen), och hur stor andel av den producerande tiden det var.";
+const PEAK_POWER_INFO =
+  "Den högsta medeleffekten (kW) under en enskild kvart – din kraftigaste exporttopp. Jämför med säkringsgränsen i diagrammet nedan.";
 const UPGRADE_INFO =
   "Väger den högre abonnemangsavgiften för nästa säkringssteg mot det (optimistiskt uppskattade) värdet av den export en större säkring hade frigjort under de kvartar du slår i taket. Frigjord export sker mitt på dagen när spotpriset ofta är lågt, så värdet är litet.";
 const TIMING_INFO =
@@ -635,21 +641,28 @@ export function AnalysisResults({
                   {formatNumber(data.natanslutning.intervaller_vid_max)}{" "}
                   <span className="text-base">{isQuarterHour(productionGranularity) ? "kvartar" : "intervall"}</span>
                 </div>
-                <p className="text-sm text-muted-foreground">
+                <p className="flex items-center gap-1 text-sm text-muted-foreground">
                   vid max ({formatNumber(data.natanslutning.andel_tid_vid_max_pct, 1)}% av tiden)
+                  <InfoTooltip text={KVARTAR_VID_MAX_INFO} />
                 </p>
               </div>
               <div>
                 <div className="text-2xl font-bold font-mono">
                   {formatNumber(data.natanslutning.hogsta_effekt_kw, 1)} <span className="text-base">kW</span>
                 </div>
-                <p className="text-sm text-muted-foreground">högsta uppmätta effekt</p>
+                <p className="flex items-center gap-1 text-sm text-muted-foreground">
+                  högsta uppmätta effekt
+                  <InfoTooltip text={PEAK_POWER_INFO} />
+                </p>
               </div>
               <div>
                 <div className="text-2xl font-bold font-mono">
                   {formatNumber(data.natanslutning.energi_vid_max_kwh, 1)} <span className="text-base">kWh</span>
                 </div>
-                <p className="text-sm text-muted-foreground">exporterat vid max</p>
+                <p className="flex items-center gap-1 text-sm text-muted-foreground">
+                  exporterat vid max
+                  <InfoTooltip text={ENERGY_AT_MAX_INFO} />
+                </p>
               </div>
             </div>
             {data.natanslutning.serie && data.natanslutning.serie.length > 0 && (
@@ -1083,6 +1096,44 @@ export function AnalysisResults({
           </CardContent>
         </Card>
       )}
+
+      {/* Data sources & method */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center gap-2">
+            <Info className="h-5 w-5 text-primary" />
+            <CardTitle className="text-lg">Datakällor &amp; metod</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm text-muted-foreground">
+          <div>
+            <p className="font-medium text-foreground">Spotpriser</p>
+            <p>
+              elprisetjustnu.se – per timme/kvart för valt elområde (SEK/kWh), hämtas direkt i webbläsaren utan nyckel.
+              All ekonomi (intäkter, effektivt pris, brytpunkt, månadsprognos) bygger på dina exporterade kWh × dessa priser.
+            </p>
+          </div>
+          <div>
+            <p className="font-medium text-foreground">Solinstrålning – SMHI STRÅNG</p>
+            <p>
+              <span className="text-foreground">Vad:</span> SMHI:s STRÅNG-modell för global horisontell solinstrålning
+              (W/m²) – en historisk <span className="text-foreground">modell</span> (~2,5 km rutnät, per timme, sedan 1999),
+              inte mätvärden på din exakta punkt.
+            </p>
+            <p>
+              <span className="text-foreground">Hur:</span> hämtas direkt från SMHI:s öppna API i din webbläsare (ingen
+              nyckel). Endast vald position (latitud/longitud) och datumintervall skickas – ingen av dina data lämnar webbläsaren.
+            </p>
+            <p>
+              <span className="text-foreground">Var:</span> används i inställningarnas platsväljare
+              (&quot;Hämta solinstrålning&quot;) för att visa periodens instrålning (kWh/m²) och, med din installerade effekt
+              (kWp), en grov uppskattad potentiell produktion (instrålning × kWp × 0,82). Det är en oberoende referens och
+              påverkar inte intäkts-/exportsiffrorna ovan, som bygger på din uppmätta export.
+            </p>
+          </div>
+          <p>All analys körs i din webbläsare – inga filer eller resultat skickas till någon server.</p>
+        </CardContent>
+      </Card>
 
       {/* AI Explanation */}
       {data.ai_explanation_sv && (
