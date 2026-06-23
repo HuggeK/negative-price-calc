@@ -14,7 +14,23 @@ import {
   Checkbox,
 } from "@sourceful-energy/ui";
 import { toast } from "sonner";
-import { X, Sparkles, Loader2, ChevronDown, Upload } from "lucide-react";
+import {
+  X,
+  Sparkles,
+  Loader2,
+  ChevronDown,
+  Upload,
+  SolarPanel,
+  MapPin,
+  Gauge,
+  ArrowUpCircle,
+  ArrowDownCircle,
+  Plug,
+  Building2,
+  Percent,
+  Coins,
+  Landmark,
+} from "lucide-react";
 import { Header } from "@/components/header";
 import { FileUpload } from "@/components/file-upload";
 import { LocationPicker } from "@/components/location-picker";
@@ -769,7 +785,9 @@ export default function Home() {
               <FileUpload selectedFiles={selectedFiles} onFilesSelect={setSelectedFiles} />
 
               <div className="space-y-2">
-                <Label>Svenskt elområde</Label>
+                <Label className="flex items-center gap-1.5">
+                  <MapPin className="h-3.5 w-3.5 text-muted-foreground" /> Svenskt elområde
+                </Label>
                 <Select value={selectedArea} onValueChange={setSelectedArea}>
                   <SelectTrigger>
                     <SelectValue />
@@ -789,7 +807,9 @@ export default function Home() {
                 <h3 className="text-sm font-semibold text-foreground">Inställningar</h3>
 
                 <div className="space-y-2">
-                  <Label>Huvudsäkring (A)</Label>
+                  <Label className="flex items-center gap-1.5">
+                    <Gauge className="h-3.5 w-3.5 text-muted-foreground" /> Huvudsäkring (A)
+                  </Label>
                   <Select value={fuseAmps} onValueChange={setFuseAmps}>
                     <SelectTrigger>
                       <SelectValue placeholder="Vet ej / hoppa över" />
@@ -809,7 +829,8 @@ export default function Home() {
 
                 {fuseAmps && nextFuseStep(Number(fuseAmps)) !== undefined && (
                   <div className="space-y-2">
-                    <Label htmlFor="next-fuse-fee">
+                    <Label htmlFor="next-fuse-fee" className="flex items-center gap-1.5">
+                      <ArrowUpCircle className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                       Elnät månadsavgift för nästa säkring – {nextFuseStep(Number(fuseAmps))} A
                       {" "}(≈ {Math.round((Math.sqrt(3) * 400 * Number(nextFuseStep(Number(fuseAmps)))) / 100) / 10} kW) (kr/mån, inkl. moms)
                     </Label>
@@ -829,7 +850,8 @@ export default function Home() {
 
                 {fuseAmps && prevFuseStep(Number(fuseAmps)) !== undefined && (
                   <div className="space-y-2">
-                    <Label htmlFor="lower-fuse-fee">
+                    <Label htmlFor="lower-fuse-fee" className="flex items-center gap-1.5">
+                      <ArrowDownCircle className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                       Elnät månadsavgift för lägre säkring – {prevFuseStep(Number(fuseAmps))} A
                       {" "}(≈ {Math.round((Math.sqrt(3) * 400 * Number(prevFuseStep(Number(fuseAmps)))) / 100) / 10} kW) (kr/mån, inkl. moms)
                     </Label>
@@ -848,7 +870,9 @@ export default function Home() {
                 )}
 
                 <div className="space-y-2">
-                  <Label htmlFor="installed-kwp">Installerad effekt (kWp, valfritt)</Label>
+                  <Label htmlFor="installed-kwp" className="flex items-center gap-1.5">
+                    <SolarPanel className="h-3.5 w-3.5 text-muted-foreground" /> Installerad effekt (kWp, valfritt)
+                  </Label>
                   <Input
                     id="installed-kwp"
                     inputMode="decimal"
@@ -879,11 +903,15 @@ export default function Home() {
                   <h5 className="text-sm font-medium text-foreground">Fasta månadsavgifter</h5>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-2">
-                      <Label htmlFor="grid-monthly">Elnät (kr/mån, inkl. moms)</Label>
+                      <Label htmlFor="grid-monthly" className="flex items-center gap-1.5">
+                        <Plug className="h-3.5 w-3.5 text-muted-foreground" /> Elnät (kr/mån, inkl. moms)
+                      </Label>
                       <Input id="grid-monthly" inputMode="decimal" value={gridMonthlyFee} onChange={(e) => setGridMonthlyFee(e.target.value)} placeholder="t.ex. 250" />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="trader-monthly">Elhandel (kr/mån, inkl. moms)</Label>
+                      <Label htmlFor="trader-monthly" className="flex items-center gap-1.5">
+                        <Building2 className="h-3.5 w-3.5 text-muted-foreground" /> Elhandel (kr/mån, inkl. moms)
+                      </Label>
                       <Input id="trader-monthly" inputMode="decimal" value={traderMonthlyFee} onChange={(e) => setTraderMonthlyFee(e.target.value)} placeholder="t.ex. 45" />
                     </div>
                   </div>
@@ -895,7 +923,9 @@ export default function Home() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="vat">Moms (%)</Label>
+                  <Label htmlFor="vat" className="flex items-center gap-1.5">
+                    <Percent className="h-3.5 w-3.5 text-muted-foreground" /> Moms (%)
+                  </Label>
                   <Input id="vat" inputMode="decimal" value={vatRate} onChange={(e) => setVatRate(e.target.value)} placeholder="25" className="max-w-[8rem]" />
                   <div className="flex items-center justify-between gap-3 pt-1">
                     <Label htmlFor="vat-registered" className="font-normal">Momsregistrerad (moms på försäljning)</Label>
@@ -922,11 +952,15 @@ export default function Home() {
                     <h5 className="text-sm font-medium text-foreground">Elnätsbolag – nätersättning</h5>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-2">
-                        <Label htmlFor="grid-fixed">Fast (öre/kWh)</Label>
+                        <Label htmlFor="grid-fixed" className="flex items-center gap-1.5">
+                          <Coins className="h-3.5 w-3.5 text-muted-foreground" /> Fast (öre/kWh)
+                        </Label>
                         <Input id="grid-fixed" inputMode="decimal" value={gridFixedOre} onChange={(e) => setGridFixedOre(e.target.value)} placeholder="t.ex. 3" />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="grid-pct">Rörlig (% av spot)</Label>
+                        <Label htmlFor="grid-pct" className="flex items-center gap-1.5">
+                          <Percent className="h-3.5 w-3.5 text-muted-foreground" /> Rörlig (% av spot)
+                        </Label>
                         <Input id="grid-pct" inputMode="decimal" value={gridPct} onChange={(e) => setGridPct(e.target.value)} placeholder="t.ex. 5" />
                       </div>
                     </div>
@@ -940,11 +974,15 @@ export default function Home() {
                     <h5 className="text-sm font-medium text-foreground">Elhandelsbolag – påslag/avdrag</h5>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-2">
-                        <Label htmlFor="trader-fixed">Fast (öre/kWh)</Label>
+                        <Label htmlFor="trader-fixed" className="flex items-center gap-1.5">
+                          <Coins className="h-3.5 w-3.5 text-muted-foreground" /> Fast (öre/kWh)
+                        </Label>
                         <Input id="trader-fixed" inputMode="decimal" value={traderFixedOre} onChange={(e) => setTraderFixedOre(e.target.value)} placeholder="t.ex. 8 eller -2" />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="trader-pct">Rörlig (% av spot)</Label>
+                        <Label htmlFor="trader-pct" className="flex items-center gap-1.5">
+                          <Percent className="h-3.5 w-3.5 text-muted-foreground" /> Rörlig (% av spot)
+                        </Label>
                         <Input id="trader-pct" inputMode="decimal" value={traderPct} onChange={(e) => setTraderPct(e.target.value)} placeholder="t.ex. 0 eller -4" />
                       </div>
                     </div>
@@ -984,11 +1022,15 @@ export default function Home() {
                     <div className="space-y-3">
                       <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-2">
-                          <Label htmlFor="tax">Energiskatt (öre/kWh, ex. moms)</Label>
+                          <Label htmlFor="tax" className="flex items-center gap-1.5">
+                            <Landmark className="h-3.5 w-3.5 text-muted-foreground" /> Energiskatt (öre/kWh, ex. moms)
+                          </Label>
                           <Input id="tax" inputMode="decimal" value={energyTaxOre} onChange={(e) => setEnergyTaxOre(e.target.value)} placeholder="t.ex. 42,82" />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="fee">Nätavgift (öre/kWh, ex. moms)</Label>
+                          <Label htmlFor="fee" className="flex items-center gap-1.5">
+                            <Plug className="h-3.5 w-3.5 text-muted-foreground" /> Nätavgift (öre/kWh, ex. moms)
+                          </Label>
                           <Input id="fee" inputMode="decimal" value={gridFeeOre} onChange={(e) => setGridFeeOre(e.target.value)} placeholder="t.ex. 25" />
                         </div>
                       </div>
