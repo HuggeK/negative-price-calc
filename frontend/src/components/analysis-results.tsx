@@ -352,7 +352,7 @@ const TOTAL_EXPORT_INFO = "Summan av all el du matat ut på nätet under periode
 const TOTAL_REVENUE_INFO =
   "Värdet av din export till rena spotpriset (SEK), summerat över perioden – före påslag/avgifter och moms.";
 const NEG_QUARTERS_INFO =
-  "Antal kvartar (15 min) då spotpriset var negativt medan du exporterade – då betalar du för att mata ut el.";
+  "Antal kvartar (15 min) då själva spotpriset var negativt medan du exporterade – ett mått på din marknadsexponering, räknat på rå spot (utan offset). Om du faktiskt gick med förlust beror på dina offset: ”Kostnad negativa priser” och ”Kvartar du exporterade med förlust” räknas offset-medvetet (effektivt pris under brytpunkten), och kan därför gälla färre kvartar.";
 const NEG_COST_INFO =
   "Vad det kostade dig totalt att exportera när ditt effektiva pris var under noll (spotpris under brytpunkten, inkl. förlustersättning/påslag och moms). Samma offset-medvetna belopp som ”uppskattad total förlust” längre ner – inte enbart råspot.";
 const EXPORT_COMP_INFO =
