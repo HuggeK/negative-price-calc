@@ -1,109 +1,92 @@
-# ⚡ Negative Price Calculator
+# Negative Price Calculator
 
-Analyze your solar export against historical Swedish spot prices — including **negative prices** — and see what your electricity was actually worth. The web app runs **entirely in your browser**: your production file never leaves your device.
+Analyze your solar export against historical Swedish spot prices — including negative prices — and see what your electricity was actually worth. The web app runs entirely in your browser; your production file never leaves your device.
 
-**[🔗 Live app →](https://huggek.github.io/negative-price-calc/)**
+**[Live app](https://huggek.github.io/negative-price-calc/)**
 
 <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License">
 <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome">
 
----
+## Overview
 
-## 🎯 What is this?
+When you have solar panels you sell excess electricity to the grid, but spot prices sometimes go negative — meaning you pay to export. Since the 60 öre/kWh tax credit ended on 1 January 2026, the spot price alone decides what your export is worth. Upload your meter export and the tool reports:
 
-When you have solar panels you sell excess electricity to the grid. But spot prices sometimes go **negative** — meaning you pay to export. Since the 60 öre/kWh tax credit ended on 1 January 2026, the spot price alone decides what your export is worth. This tool helps you:
+- Total export and revenue at realized spot prices.
+- Negative-price exposure: quarters, kWh and cost of exporting at negative prices.
+- Grid-connection load: how often export was pinned at your main-fuse limit.
+- Effective export pay from both your elnätsbolag (förlustersättning) and elhandelsbolag (påslag/avdrag), each a fixed (öre/kWh) + variable (% of spot) part, plus VAT.
+- Loss-making quarters where the effective price fell below zero, with a chart and a table.
+- Self-consumption value: what a kWh is worth used yourself vs. exported.
+- Whether upgrading or downgrading the main fuse would pay off.
+- Optional Swedish AI summary, generated in the browser with your own key.
+- JSON / CSV export of the results.
 
-- 📊 **Analyze your production** — upload your export CSV (**15-minute / quarter-hour recommended**; hourly and daily also work)
-- 💸 **Detect negative-price periods** — see when exporting cost you money
-- ⏱️ **Catch sub-hour peaks** — full **15-minute** resolution (the Swedish market moved to 15-min on 2025-10-01)
-- 🔌 **Check your grid connection** — how long export was pinned at your main-fuse limit ("flat peaks")
-- 💱 **See your real export pay** — effective compensation from both your **elnätsbolag** (förlustersättning) and **elhandelsbolag** (påslag/avdrag), each as a fixed (öre/kWh) + variable (% of spot) part, × (1 + moms)
-- 📉 **Find loss-making quarters** — the quarters where your effective price went below zero (you paid to export), with a chart and a table of when, the price, the volume and the estimated loss in kronor
-- 🏠 **Value self-consumption** — what a kWh is worth used yourself vs. exported, as a separate section
-- 🤖 **Get an AI summary** (optional) — Swedish-language, generated in your browser with your own key
-- 💾 **Export results** — download JSON or CSV
+## Features
 
-## ✨ Key features
+- Private and serverless: all parsing, price-matching and analysis run client-side.
+- No API key for prices: uses the free [elprisetjustnu.se API](https://www.elprisetjustnu.se/elpris-api) (CORS-enabled, native 15-minute, prices in SEK).
+- Interval-aware: handles any mix of hourly / 15-minute / daily data via overlap allocation.
+- Swedish bidding zones SE1–SE4.
+- Grid-connection analysis: main-fuse flat-peak detection (3-phase, 400 V).
+- Export compensation per company (elnät + elhandel), each fixed (öre/kWh) + variable (% of spot) + VAT.
+- Loss-making quarters: count, chart and table of quarters exported below break-even.
+- Monthly forecast: expected net per full-data month after fixed monthly fees.
+- Fuse up/downgrade analysis: extra/lower subscription fee weighed against unlocked or clipped export.
+- Optional SMHI STRÅNG solar irradiance for sunlit-hour pricing and a rough potential-production estimate.
+- Inputs in öre/kWh; results show kronor for totals and öre for per-kWh values.
 
-- **🔒 Private & serverless** — all parsing, price-matching and analysis run client-side; nothing is uploaded
-- **🔌 No API key for prices** — uses the free [elprisetjustnu.se API](https://www.elprisetjustnu.se/elpris-api) (CORS-enabled, native 15-minute, prices already in SEK)
-- **⏱️ Interval-aware** — correctly handles any mix of hourly / 15-minute / daily data via overlap allocation
-- **🇸🇪 Swedish bidding zones** — SE1–SE4
-- **🔌 Grid-connection analysis** — main-fuse flat-peak detection (3-phase, 400 V)
-- **💱 Export compensation** — per-company (elnät + elhandel), each fixed (öre/kWh) + variable (% of spot) + VAT
-- **📉 Loss-making quarters** — count, chart and table of quarters exported below the break-even price
-- **📅 Monthly forecast** — expected net per full-data month after fixed monthly fees (elnät per fuse class + elhandel)
-- **🏠 Self-consumption valuation** — value of self-use vs. exporting, in a separate section
-- **🪙 Familiar units** — inputs in öre/kWh; results show kronor for totals and öre for per-kWh
-- **🤖 Optional AI summary** — via OpenRouter, using a key you supply (stored only in your browser)
-- **📨 Optional newsletter** — opt in to Sourceful Energy updates (never required to run an analysis)
+## Usage
 
-## 📖 How to use
+1. Export your meter data as CSV from your grid/energy company's portal. 15-minute (quarter-hour) data is recommended; hourly and daily are detected automatically. Grid companies often cap 15-minute exports at ~3 months — upload several files and they are combined.
+2. Upload the file(s), or click **Prova med exempeldata** to run a bundled 15-minute sample.
+3. Choose your bidding zone (SE1–SE4).
+4. Optionally set the main fuse size, VAT, export compensation per company, self-consumption inputs, and a position for STRÅNG.
+5. Click **Analysera**. The report appears in the browser and can be downloaded as JSON or CSV.
 
-1. **Get your export data** — log in to your grid/energy company's portal and export your meter data as CSV.
-2. **Upload the file** — **15-minute (quarter-hour) data is recommended**; hourly and daily are also detected automatically. No file of your own? Click **Prova med exempeldata** to run a bundled 15-minute sample.
-3. **Choose your bidding zone** — SE1–SE4.
-4. **(Optional) settings** — main fuse size (A), VAT %, export compensation per company (elnätsbolag and elhandelsbolag, each a fixed öre/kWh + variable % of spot), and self-consumption inputs (energy tax + grid fee, in öre/kWh). AI summary toggle is off by default.
-5. **Click "Analysera"** — the report appears directly in the browser, labelled with the data resolution (kvart / 15-min). Download it as JSON or CSV.
+Sample files are in [`python/data/samples/`](python/data/samples/); the bundled web example is [`frontend/public/exempel-15min.csv`](frontend/public/exempel-15min.csv). The browser app reads CSV (export Excel as CSV first); the Python CLI also reads Excel.
 
-Sample files live in [`python/data/samples/`](python/data/samples/); the web app's bundled example is [`frontend/public/exempel-15min.csv`](frontend/public/exempel-15min.csv). The browser app reads **CSV** (export Excel files as CSV first); the Python CLI also reads Excel.
+## Price data
 
-## 🧮 What the analysis shows
-
-- **Total export & revenue** (SEK) at realized spot prices
-- **Negative-price exposure** — hours, kWh and cost of exporting at negative prices
-- **Timing discount** — how far below the market average you were paid
-- **Grid connection** — peak power, and time/energy at the main-fuse limit (when a fuse size is given)
-- **Export compensation** — effective price/kWh and total you actually get paid, split per company (elnät + elhandel), × VAT
-- **Loss-making quarters** — how many quarters you exported below break-even, total estimated loss (kr), a daily chart and a table of the worst occasions
-- **Self-consumption value** — worth of a kWh used yourself vs. exported (when energy tax / grid fee are given)
-- **Monthly forecast** — for each month with full data, the expected net (effective compensation − fixed monthly fees for elnät + elhandel), plus averages
-- **Daily overview** chart — daily net export value (one bar per day)
-
-## 💰 Price data
-
-Prices come from the free, no-key **[elprisetjustnu.se API](https://www.elprisetjustnu.se/elpris-api)** (CORS-enabled, so it works directly from the browser):
+Prices come from the free, no-key [elprisetjustnu.se API](https://www.elprisetjustnu.se/elpris-api) (CORS-enabled, so it works from the browser):
 
 ```
 GET https://www.elprisetjustnu.se/api/v1/prices/{YYYY}/{MM}-{DD}_{ZONE}.json
 ```
 
-Returned already in SEK/kWh (and EUR/kWh) at the market resolution — **15-minute** from 2025-10-01, hourly before. elprisetjustnu.se is credited as the price source in the app footer.
+Values are returned in SEK/kWh (and EUR/kWh) at the market resolution — 15-minute from 2025-10-01, hourly before.
 
-### Why not your own ENTSO-E key in the browser?
+**Why not an ENTSO-E key in the browser?** ENTSO-E sends no CORS headers, so a static-site browser cannot read its responses, and any client-side key is publicly visible. The browser app therefore uses elprisetjustnu.se. To use an ENTSO-E key, run the Python CLI (`ENTSOE_API_KEY`), which runs locally where CORS does not apply.
 
-ENTSO-E's API sends no CORS headers, so a browser on a static site cannot read its responses; and any key placed in client-side code is publicly visible, so it cannot be kept secret. The **browser app** therefore uses elprisetjustnu.se. To use an ENTSO-E key, run the **Python CLI** (`ENTSOE_API_KEY`), which runs locally/server-side where CORS does not apply.
-
-## 🏗️ Architecture
+## Architecture
 
 ```
 negative-price-calc/
-├── frontend/                     # The deployed web app (Next.js, static export)
-│   ├── public/exempel-15min.csv  # Bundled 15-min example for the "Prova med exempeldata" button
+├── frontend/                     # Deployed web app (Next.js, static export)
+│   ├── public/exempel-15min.csv  # Bundled 15-min example
 │   └── src/
 │       ├── app/page.tsx          # Upload UI, settings, results
 │       ├── components/           # Results cards, charts, terminal, upload
 │       └── lib/                  # Client-side engine:
-│           ├── parseProduction.ts  #   CSV parsing (Swedish formats) + 15-min validation
+│           ├── parseProduction.ts  #   CSV parsing + 15-min validation + multi-file combine
 │           ├── prices.ts           #   elprisetjustnu.se price client
 │           ├── analyze.ts          #   interval-aware analysis (overlap allocation)
-│           └── aiSummary.ts        #   optional OpenRouter summary (browser, BYO key)
+│           ├── strang.ts           #   SMHI STRÅNG irradiance client (browser-only)
+│           └── aiSummary.ts        #   optional OpenRouter summary (BYO key)
 └── python/                       # Python library / CLI (feature parity)
     ├── core/
-    │   ├── price_analyzer.py     #   interval-aware analysis + fuse flat-peak
-    │   ├── intervals.py          #   granularity helpers + 15-min validation
-    │   ├── price_fetcher.py      #   ENTSO-E fetch (needs ENTSOE_API_KEY) + SQLite cache
+    │   ├── price_analyzer.py     #   interval-aware analysis + fuse up/downgrade
+    │   ├── intervals.py          #   granularity helpers + 15-min validation + combine
+    │   ├── price_fetcher.py      #   ENTSO-E fetch (ENTSOE_API_KEY) + SQLite cache
     │   └── db_manager.py         #   price cache (resolution-aware)
-    ├── cli/main.py               #   `se-cli` command-line interface
-    ├── app.py                    #   Optional Flask API (not used by the static app)
+    ├── cli/main.py               #   se-cli command-line interface
     └── data/samples/             #   Example production files
 ```
 
-The **web app is fully client-side** and needs no backend. The **Python CLI/library** mirrors the analysis (15-minute intervals, fuse flat-peak, VAT/self-consumption) for offline/scripted use.
+The web app is fully client-side and needs no backend. The Python CLI/library mirrors the analysis for offline/scripted use; STRÅNG is browser-only.
 
-## 🚀 Run locally
+## Run locally
 
-### Web app (the deployed one)
+Web app:
 
 ```bash
 cd frontend
@@ -111,49 +94,42 @@ npm install
 npm run dev          # http://localhost:3000
 ```
 
-### Python CLI (optional, in `python/`)
+Python CLI (optional):
 
 ```bash
 cd python
 uv sync
 uv run se-cli analyze your_file.csv --area SE_4 --json
-# self-consumption valuation:
 uv run se-cli analyze your_file.csv --area SE_4 --vat 25 --energy-tax 0.4282 --transmission-fee 0.25
 ```
 
-The CLI fetches prices from ENTSO-E (set `ENTSOE_API_KEY`) or uses the bundled SQLite cache. See [`python/README.md`](python/README.md) for details.
+The CLI fetches prices from ENTSO-E (`ENTSOE_API_KEY`) or uses the bundled SQLite cache. See [`python/README.md`](python/README.md).
 
-## ☁️ Deployment (GitHub Pages)
+## Deployment (GitHub Pages)
 
-The web app is a static export deployed by GitHub Actions ([`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml)) on every push to `main`. To deploy your own fork:
+GitHub Actions ([`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml)) builds `frontend/` and publishes `frontend/out` on every push to `main`. For a fork: enable Settings → Pages → Source: GitHub Actions, then push to `main` (the build sets `NEXT_PUBLIC_BASE_PATH=/<repo>`).
 
-1. Enable **Settings → Pages → Source: GitHub Actions**.
-2. Push to `main`. The workflow builds `frontend/` (with `NEXT_PUBLIC_BASE_PATH=/<repo>`) and publishes `frontend/out`.
-
-## 🧪 Tests
+## Tests
 
 ```bash
-# Python (interval-aware analysis + fuse parity + 15-min validation)
+# Python
 cd python
-uv run pytest            # or: python -m pytest test_intervals.py test_core.py
+uv run pytest
 
-# TypeScript engine sanity checks (from repo root)
+# TypeScript engine (from repo root)
 node --experimental-strip-types frontend/scripts/test-analyze.mjs
 ```
 
-## 🤝 Contributing
+## Contributing
 
-1. Fork and create a feature branch.
-2. Make your change (keep the TS engine and Python analyzer in parity).
-3. Run the tests above.
-4. Open a Pull Request.
+Fork, create a feature branch, make the change (keep the TS engine and Python analyzer in parity), run the tests, and open a pull request.
 
-## 📄 License
+## License
 
 MIT — see [LICENSE](LICENSE).
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
-- Price data from [elprisetjustnu.se](https://www.elprisetjustnu.se/elpris-api)
-- Built for the Swedish solar community by [Sourceful Energy](https://sourceful.energy)
-```
+- Price data from [elprisetjustnu.se](https://www.elprisetjustnu.se/elpris-api).
+- Solar irradiance from [SMHI STRÅNG](https://opendata.smhi.se/apidocs/strang/).
+- Built for the Swedish solar community by [Sourceful Energy](https://sourceful.energy).
