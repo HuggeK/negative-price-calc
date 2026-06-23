@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { X, Sparkles, Loader2, ChevronDown, Upload } from "lucide-react";
 import { Header } from "@/components/header";
 import { FileUpload } from "@/components/file-upload";
+import { LocationPicker } from "@/components/location-picker";
 import { StreamingTerminal, LogEntry } from "@/components/streaming-terminal";
 import { AnalysisResults } from "@/components/analysis-results";
 import { parseProductionCsv, assessResolution, combineProduction } from "@/lib/parseProduction";
@@ -49,6 +50,8 @@ const DEFAULT_SETTINGS = {
   gridMonthlyFee: "",
   nextFuseFee: "",
   installedKwp: "",
+  latitude: "",
+  longitude: "",
   traderMonthlyFee: "",
   energyTaxOre: "",
   gridFeeOre: "",
@@ -117,6 +120,9 @@ export default function Home() {
   const [nextFuseFee, setNextFuseFee] = useState(DEFAULT_SETTINGS.nextFuseFee);
   // Installed PV capacity (kWp) — bounds the fuse-upgrade estimate.
   const [installedKwp, setInstalledKwp] = useState(DEFAULT_SETTINGS.installedKwp);
+  // Position for SMHI STRÅNG solar-irradiance lookups.
+  const [latitude, setLatitude] = useState(DEFAULT_SETTINGS.latitude);
+  const [longitude, setLongitude] = useState(DEFAULT_SETTINGS.longitude);
   const [traderMonthlyFee, setTraderMonthlyFee] = useState(DEFAULT_SETTINGS.traderMonthlyFee);
   // Self-consumption valuation (separate, optional). Inputs in öre/kWh.
   const [energyTaxOre, setEnergyTaxOre] = useState(DEFAULT_SETTINGS.energyTaxOre);
@@ -167,6 +173,8 @@ export default function Home() {
         if (typeof s.gridMonthlyFee === "string") setGridMonthlyFee(s.gridMonthlyFee);
         if (typeof s.nextFuseFee === "string") setNextFuseFee(s.nextFuseFee);
         if (typeof s.installedKwp === "string") setInstalledKwp(s.installedKwp);
+        if (typeof s.latitude === "string") setLatitude(s.latitude);
+        if (typeof s.longitude === "string") setLongitude(s.longitude);
         if (typeof s.traderMonthlyFee === "string") setTraderMonthlyFee(s.traderMonthlyFee);
         if (typeof s.energyTaxOre === "string") setEnergyTaxOre(s.energyTaxOre);
         if (typeof s.gridFeeOre === "string") setGridFeeOre(s.gridFeeOre);
@@ -198,6 +206,8 @@ export default function Home() {
           gridMonthlyFee,
           nextFuseFee,
           installedKwp,
+          latitude,
+          longitude,
           traderMonthlyFee,
           energyTaxOre,
           gridFeeOre,
@@ -219,6 +229,8 @@ export default function Home() {
     gridMonthlyFee,
     nextFuseFee,
     installedKwp,
+    latitude,
+    longitude,
     traderMonthlyFee,
     energyTaxOre,
     gridFeeOre,
@@ -494,6 +506,8 @@ export default function Home() {
     setGridMonthlyFee(DEFAULT_SETTINGS.gridMonthlyFee);
     setNextFuseFee(DEFAULT_SETTINGS.nextFuseFee);
     setInstalledKwp(DEFAULT_SETTINGS.installedKwp);
+    setLatitude(DEFAULT_SETTINGS.latitude);
+    setLongitude(DEFAULT_SETTINGS.longitude);
     setTraderMonthlyFee(DEFAULT_SETTINGS.traderMonthlyFee);
     setEnergyTaxOre(DEFAULT_SETTINGS.energyTaxOre);
     setGridFeeOre(DEFAULT_SETTINGS.gridFeeOre);
@@ -673,22 +687,36 @@ export default function Home() {
                     <p className="text-xs text-muted-foreground">
                       Fyll i för att se om det är värt att uppgradera huvudsäkringen ett steg (jämförs mot elnätets månadsavgift ovan).
                     </p>
-                    <div className="space-y-2 pt-1">
-                      <Label htmlFor="installed-kwp">Installerad effekt (kWp, valfritt)</Label>
-                      <Input
-                        id="installed-kwp"
-                        inputMode="decimal"
-                        value={installedKwp}
-                        onChange={(e) => setInstalledKwp(e.target.value)}
-                        placeholder="t.ex. 12"
-                        className="max-w-[12rem]"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Solcellsanläggningens toppeffekt. Begränsar uppskattningen – en större säkring hjälper bara upp till vad panelerna kan producera.
-                      </p>
-                    </div>
                   </div>
                 )}
+
+                <div className="space-y-2">
+                  <Label htmlFor="installed-kwp">Installerad effekt (kWp, valfritt)</Label>
+                  <Input
+                    id="installed-kwp"
+                    inputMode="decimal"
+                    value={installedKwp}
+                    onChange={(e) => setInstalledKwp(e.target.value)}
+                    placeholder="t.ex. 12"
+                    className="max-w-[12rem]"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Solcellsanläggningens toppeffekt. Används för uppskattad potentiell produktion (SMHI) och begränsar
+                    säkringsuppgraderingen – en större säkring hjälper bara upp till vad panelerna kan producera.
+                  </p>
+                </div>
+
+                <div className="border-t border-border/50 pt-3">
+                  <LocationPicker
+                    lat={latitude}
+                    lon={longitude}
+                    onChange={(la, lo) => {
+                      setLatitude(la);
+                      setLongitude(lo);
+                    }}
+                    kwp={numOrUndef(installedKwp)}
+                  />
+                </div>
 
                 <div className="space-y-2">
                   <h5 className="text-sm font-medium text-foreground">Fasta månadsavgifter</h5>
