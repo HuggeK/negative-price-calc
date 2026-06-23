@@ -84,7 +84,7 @@ const EXAMPLE_SETTINGS: typeof DEFAULT_SETTINGS = {
   traderPct: "",
   gridMonthlyFee: "1345",
   nextFuseFee: "1765",
-  lowerFuseFee: "",
+  lowerFuseFee: "1080", // 20 A (one step down from 25 A)
   installedKwp: "63",
   latitude: "55.6050", // Malmö (SE4) — enables the STRÅNG sunlit/potential-production features
   longitude: "13.0038",
