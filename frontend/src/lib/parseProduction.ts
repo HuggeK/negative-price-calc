@@ -445,3 +445,23 @@ export function combineProduction(
     granularitiesMatch,
   };
 }
+
+/**
+ * Start of the Swedish 15-minute (quarter-hour) settlement market: 2025-10-01 00:00
+ * Europe/Stockholm wall-clock. Timestamps are stored as `Date.UTC(...local fields)`, so the
+ * cutoff is expressed the same way.
+ */
+export const QUARTER_HOUR_SWITCH_MS = Date.UTC(2025, 9, 1, 0, 0, 0);
+
+/**
+ * Drop production rows that start before the 15-minute market switch (2025-10-01). Spot prices
+ * were only hourly (60-minute) before that date, so any 15-minute production from earlier can't be
+ * matched against quarter-hour prices — the comparison would be misleading. Rows on/after the
+ * cutoff are kept untouched. Returns the trimmed series plus how many rows were dropped.
+ */
+export function dropBeforeQuarterHourSwitch(
+  parsed: ParsedProduction
+): ParsedProduction & { droppedRows: number } {
+  const rows = parsed.rows.filter((r) => r.start >= QUARTER_HOUR_SWITCH_MS);
+  return { ...parsed, rows, droppedRows: parsed.rows.length - rows.length };
+}

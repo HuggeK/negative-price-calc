@@ -6,6 +6,8 @@ import {
   parseProductionXlsx,
   assessResolution,
   combineProduction,
+  dropBeforeQuarterHourSwitch,
+  QUARTER_HOUR_SWITCH_MS,
 } from "../src/lib/parseProduction.ts";
 
 let failures = 0;
@@ -697,6 +699,39 @@ console.log("Test 19: xlsx El Rapport Serie matrix");
   });
   approx(feb1.kwh, 8.8, "El Rapport: Feb-01 01:00 = 8.8 (Serie!M4)");
   eq(p.granularity, "hourly", "El Rapport: hourly granularity");
+}
+
+// --- Test 20: drop production before the 2025-10-01 15-minute market switch ---
+console.log("Test 20: drop data before 2025-10-01");
+{
+  eq(QUARTER_HOUR_SWITCH_MS, Date.UTC(2025, 9, 1, 0, 0, 0), "cutoff = 2025-10-01 00:00");
+  const mk = (rows) => ({
+    rows,
+    granularity: "15min",
+    stepMinutes: 15,
+    stepConsistencyPct: 100,
+    datetimeColumn: "Datum",
+    productionColumn: "kWh",
+  });
+  const before = QUARTER_HOUR_SWITCH_MS - 60 * 60 * 1000; // 2025-09-30 23:00
+  const atCut = QUARTER_HOUR_SWITCH_MS; // 2025-10-01 00:00
+  const after = QUARTER_HOUR_SWITCH_MS + 60 * 60 * 1000;
+  const parsed = mk([
+    { start: before, end: before + 9e5, kwh: 1 },
+    { start: atCut, end: atCut + 9e5, kwh: 2 },
+    { start: after, end: after + 9e5, kwh: 3 },
+  ]);
+  const trimmed = dropBeforeQuarterHourSwitch(parsed);
+  eq(trimmed.droppedRows, 1, "dropped 1 row before cutoff");
+  eq(trimmed.rows.length, 2, "kept 2 rows (on/after cutoff)");
+  approx(trimmed.rows[0].start, atCut, "first kept row starts exactly at the cutoff");
+  eq(trimmed.granularity, "15min", "granularity preserved");
+  eq(trimmed.datetimeColumn, "Datum", "columns preserved");
+
+  // All-before case: everything dropped.
+  const allBefore = dropBeforeQuarterHourSwitch(mk([{ start: before, end: before + 9e5, kwh: 1 }]));
+  eq(allBefore.rows.length, 0, "all-before: nothing kept");
+  eq(allBefore.droppedRows, 1, "all-before: 1 dropped");
 }
 
 console.log(failures === 0 ? "\nALL PASSED" : `\n${failures} FAILURE(S)`);
