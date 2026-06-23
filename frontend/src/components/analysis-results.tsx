@@ -1095,7 +1095,13 @@ export function AnalysisResults({
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-4 sm:grid-cols-3 mb-4">
+            <div className="mb-4">
+              <div className="text-3xl font-bold font-mono text-destructive">
+                {formatCurrency(data.forlust_export.total_forlust_sek)}
+              </div>
+              <p className="text-sm text-muted-foreground">uppskattad total förlust</p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 mb-4">
               <div>
                 <div className="text-2xl font-bold font-mono text-destructive">
                   {formatNumber(data.forlust_export.antal)}
@@ -1103,12 +1109,6 @@ export function AnalysisResults({
                 <p className="text-sm text-muted-foreground">
                   {data.forlust_export.intervall_minuter === 15 ? "kvartar" : "tillfällen"} med förlust
                 </p>
-              </div>
-              <div>
-                <div className="text-2xl font-bold font-mono text-destructive">
-                  {formatCurrency(data.forlust_export.total_forlust_sek)}
-                </div>
-                <p className="text-sm text-muted-foreground">uppskattad total förlust</p>
               </div>
               <div>
                 <div className="text-2xl font-bold font-mono">
