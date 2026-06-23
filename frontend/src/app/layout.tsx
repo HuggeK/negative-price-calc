@@ -8,7 +8,7 @@ import { Toaster } from "sonner";
 const GA_MEASUREMENT_ID = "G-7QXTK1TW4F";
 
 export const metadata: Metadata = {
-  title: "Negativa Prisanalyseraren | Sourceful Energy",
+  title: "Negativa Prisanalyseraren",
   description: "Analysera din solproduktion och upptäck hur negativa elpriser påverkar din ekonomi",
 };
 
