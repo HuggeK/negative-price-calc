@@ -53,7 +53,7 @@ node --experimental-strip-types frontend/scripts/test-analyze.mjs
 - See [`python/README.md`](python/README.md) and [`python/CLAUDE.md`](python/CLAUDE.md).
 
 ### Key concepts
-- **15-minute resolution is the recommended input.** The Swedish market moved to 15-minute (quarter-hour) settlement on 2025-10-01; quarter-hour data is needed to see negative-price quarters and short export peaks. Both engines validate it (`assessResolution` / `assess_resolution`) and warn — but don't hard-fail — on coarser data.
+- **15-minute resolution is required by the web app.** The Swedish market moved to 15-minute (quarter-hour) settlement on 2025-10-01; quarter-hour data is needed to see negative-price quarters and short export peaks. Both engines validate it (`assessResolution` / `assess_resolution`); the **browser app hard-fails** the analysis on coarser data (hourly/daily) with a clear "ladda upp 15-minutersdata" error, while the Python lib only warns. The web app also drops production rows before 2025-10-01 (`dropBeforeQuarterHourSwitch`), since spot prices were hourly before the switch.
 - **Interval-aware**: never assume "one row = one hour". Production and prices may be hourly, 15-minute (Swedish market from 2025-10-01), or daily; energy/cost and "hours" metrics are computed from each interval's real duration.
 - **Price source**: the browser app uses the elprisetjustnu.se API (CORS, no key, 15-min, SEK). ENTSO-E can't be called from the browser (no CORS headers, and a client-side key would be exposed); the Python `price_fetcher` uses ENTSO-E directly (key required) plus the bundled SQLite cache.
 - **Area codes**: `SE1`/`SE_1`/`SE-1` all normalize to the same zone (SE1–SE4).

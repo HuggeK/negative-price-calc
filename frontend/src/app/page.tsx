@@ -412,8 +412,21 @@ export default function Home() {
           `– kolumner "${parsed.datetimeColumn}" / "${parsed.productionColumn}".`
       );
 
-      // Validate the input is in 15-minute (quarter-hour) resolution.
+      // Require 15-minute (quarter-hour) resolution. Coarser data (hourly/daily) can't capture
+      // negative-price quarters or short export peaks, so refuse to run the analysis on it.
       const resolution = assessResolution(parsed);
+      if (!resolution.isQuarterHour) {
+        const what =
+          parsed.granularity === "hourly"
+            ? "timupplösning (60 min)"
+            : parsed.granularity === "daily"
+              ? "dygnsupplösning"
+              : `okänd upplösning (~${parsed.stepMinutes} min mellan rader)`;
+        throw new Error(
+          `Analysen kräver 15-minutersdata (kvart). Den uppladdade filen är i ${what}. ` +
+            "Ladda upp produktionsdata i 15-minutersintervall och försök igen."
+        );
+      }
       addLog(resolution.level === "ok" ? "success" : "warning", resolution.message);
 
       const startMs = parsed.rows[0].start;
