@@ -146,6 +146,8 @@ def test_fuse_downgrade_clips_peaks():
     assert d["intervals_over_lower_limit"] == 1
     assert d["clipped_export_kwh"] == pytest.approx(13 - lower_kw, abs=0.05)
     assert d["clipped_value_sek"] == pytest.approx((13 - lower_kw) * 1.0, abs=0.05)
+    # Over-period netto = period saving − period clipped value (the primary basis).
+    assert d["net_over_period_sek"] == pytest.approx(d["saved_fee_over_period_sek"] - d["clipped_value_sek"], abs=0.02)
     assert isinstance(d["worth_downgrading"], bool)
 
     assert "fuse_downgrade" not in PriceAnalyzer.analyze_data(merged, fuse_amps=20)

@@ -516,6 +516,9 @@ console.log("Test 17: fuse downgrade");
   eq(d.kvartar_over_lagre_tak, 1, "downgrade: 1 quarter above lower limit");
   approx(d.kapad_export_kwh, 13 - lowerKw, "downgrade: clipped kWh = 13 - 11.08", 0.05);
   approx(d.kapat_varde_sek, (13 - lowerKw) * 1, "downgrade: clipped value at spot 1", 0.05);
+  // Over-period figures: clipped value is the period total (= kapat_varde_sek), saving is
+  // scaled to the period, and netto = period saving − period clipped value.
+  approx(d.netto_over_period_sek, d.sparad_avgift_over_period_sek - d.kapat_varde_sek, "downgrade: netto över perioden", 0.02);
   eq(typeof d.vart_att_sanka, "boolean", "downgrade: verdict present");
 
   // No lower-fee given -> no block.

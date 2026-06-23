@@ -150,6 +150,7 @@ interface AnalysisData {
     nasta_avgift_kr_per_man?: number;
     extra_avgift_kr_per_man?: number;
     extra_avgift_kr_per_ar?: number;
+    extra_avgift_over_period_sek?: number;
     kvartar_vid_max?: number;
     installerad_kwp?: number;
     begransas_av_kwp?: boolean;
@@ -158,6 +159,7 @@ interface AnalysisData {
     uppskattat_extra_varde_sek?: number;
     uppskattad_extra_export_kwh_per_ar?: number;
     uppskattat_extra_varde_per_ar_sek?: number;
+    netto_over_period_sek?: number;
     netto_per_ar_sek?: number;
     vart_att_uppgradera?: boolean;
   };
@@ -170,12 +172,14 @@ interface AnalysisData {
     lagre_avgift_kr_per_man?: number;
     sparad_avgift_kr_per_man?: number;
     sparad_avgift_kr_per_ar?: number;
+    sparad_avgift_over_period_sek?: number;
     kvartar_over_lagre_tak?: number;
     period_dagar?: number;
     kapad_export_kwh?: number;
     kapat_varde_sek?: number;
     kapad_export_kwh_per_ar?: number;
     kapat_varde_per_ar_sek?: number;
+    netto_over_period_sek?: number;
     netto_per_ar_sek?: number;
     vart_att_sanka?: boolean;
   };
@@ -748,32 +752,32 @@ export function AnalysisResults({
                 {data.sakringsuppgradering.vart_att_uppgradera ? "Kan löna sig" : "Lönar sig troligen inte"}
               </div>
               <p className="text-sm text-muted-foreground">
-                Bästa fall netto:{" "}
+                Bästa fall netto över perioden ({formatNumber(data.sakringsuppgradering.period_dagar, 0)} dgr):{" "}
                 <span className="font-mono font-semibold text-foreground">
-                  {formatCurrency(data.sakringsuppgradering.netto_per_ar_sek)}/år
+                  {formatCurrency(data.sakringsuppgradering.netto_over_period_sek)}
                 </span>{" "}
-                (uppskattat värde av frigjord export − extra abonnemang)
+                <span className="text-xs">(≈ {formatCurrency(data.sakringsuppgradering.netto_per_ar_sek)}/år)</span>
               </p>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-3">
               <div>
                 <div className="text-xl font-bold font-mono text-destructive">
-                  +{formatCurrency(data.sakringsuppgradering.extra_avgift_kr_per_man)}/mån
+                  +{formatCurrency(data.sakringsuppgradering.extra_avgift_over_period_sek)}
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  högre abonnemang (+{formatCurrency(data.sakringsuppgradering.extra_avgift_kr_per_ar)}/år)
+                  högre abonnemang över perioden (+{formatCurrency(data.sakringsuppgradering.extra_avgift_kr_per_man)}/mån)
                 </p>
               </div>
               <div>
                 <div className="text-xl font-bold font-mono">
-                  {formatNumber(data.sakringsuppgradering.uppskattad_extra_export_kwh_per_ar, 0)} kWh/år
+                  {formatNumber(data.sakringsuppgradering.uppskattad_extra_export_kwh, 0)} kWh
                 </div>
                 <p className="text-sm text-muted-foreground">uppskattad frigjord export (bästa fall)</p>
               </div>
               <div>
                 <div className="text-xl font-bold font-mono text-primary">
-                  {formatCurrency(data.sakringsuppgradering.uppskattat_extra_varde_per_ar_sek)}/år
+                  {formatCurrency(data.sakringsuppgradering.uppskattat_extra_varde_sek)}
                 </div>
                 <p className="text-sm text-muted-foreground">värde av den frigjorda exporten</p>
               </div>
@@ -785,7 +789,7 @@ export function AnalysisResults({
                 <li>
                   Endast <span className="font-medium text-foreground">sammanhängande</span> kapning räknas: {formatNumber(data.sakringsuppgradering.kvartar_vid_max)}{" "}
                   kvartar där du slog i taket minst två kvartar i rad, under{" "}
-                  {formatNumber(data.sakringsuppgradering.period_dagar, 0)} dagars data (enstaka toppar ignoreras). Siffrorna är uppräknade till ett helt år.
+                  {formatNumber(data.sakringsuppgradering.period_dagar, 0)} dagars data (enstaka toppar ignoreras). Siffrorna avser den inlästa perioden; /år är en uppräkning.
                 </li>
                 <li>
                   Bästa fall: antar att produktionen de kvartarna kunnat nå{" "}
@@ -840,26 +844,26 @@ export function AnalysisResults({
                 {data.sakringsnedgradering.vart_att_sanka ? "Kan löna sig" : "Lönar sig troligen inte"}
               </div>
               <p className="text-sm text-muted-foreground">
-                Netto:{" "}
+                Netto över perioden ({formatNumber(data.sakringsnedgradering.period_dagar, 0)} dgr):{" "}
                 <span className="font-mono font-semibold text-foreground">
-                  {formatCurrency(data.sakringsnedgradering.netto_per_ar_sek)}/år
+                  {formatCurrency(data.sakringsnedgradering.netto_over_period_sek)}
                 </span>{" "}
-                (sparad avgift − kapad export)
+                <span className="text-xs">(≈ {formatCurrency(data.sakringsnedgradering.netto_per_ar_sek)}/år)</span>
               </p>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-3">
               <div>
                 <div className="text-xl font-bold font-mono text-primary">
-                  +{formatCurrency(data.sakringsnedgradering.sparad_avgift_kr_per_man)}/mån
+                  +{formatCurrency(data.sakringsnedgradering.sparad_avgift_over_period_sek)}
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  lägre abonnemang (+{formatCurrency(data.sakringsnedgradering.sparad_avgift_kr_per_ar)}/år)
+                  lägre abonnemang över perioden (+{formatCurrency(data.sakringsnedgradering.sparad_avgift_kr_per_man)}/mån)
                 </p>
               </div>
               <div>
                 <div className="text-xl font-bold font-mono text-destructive">
-                  {formatNumber(data.sakringsnedgradering.kapad_export_kwh_per_ar, 0)} kWh/år
+                  {formatNumber(data.sakringsnedgradering.kapad_export_kwh, 0)} kWh
                 </div>
                 <p className="text-sm text-muted-foreground">
                   kapad export ({formatNumber(data.sakringsnedgradering.kvartar_over_lagre_tak)} kvartar över gränsen)
@@ -867,9 +871,9 @@ export function AnalysisResults({
               </div>
               <div>
                 <div className="text-xl font-bold font-mono text-destructive">
-                  −{formatCurrency(data.sakringsnedgradering.kapat_varde_per_ar_sek)}/år
+                  −{formatCurrency(data.sakringsnedgradering.kapat_varde_sek)}
                 </div>
-                <p className="text-sm text-muted-foreground">förlorat exportvärde</p>
+                <p className="text-sm text-muted-foreground">förlorat exportvärde över perioden</p>
               </div>
             </div>
 
@@ -881,8 +885,9 @@ export function AnalysisResults({
                 </p>
               ) : (
                 <p>
-                  Konkret uppskattning från din faktiska produktion: effekten över {formatNumber(data.sakringsnedgradering.lagre_sakring_kw, 1)} kW
-                  {" "}hade kapats. Siffrorna är uppräknade från {formatNumber(data.sakringsnedgradering.period_dagar, 0)} dagars data till ett helt år.
+                  Konkret uppskattning från din faktiska produktion: bara energin <span className="text-foreground">mellan den lägre
+                  gränsen ({formatNumber(data.sakringsnedgradering.lagre_sakring_kw, 1)} kW) och vad du producerade</span> räknas som kapad.
+                  Siffrorna avser den inlästa perioden ({formatNumber(data.sakringsnedgradering.period_dagar, 0)} dgr); /år är en uppräkning.
                 </p>
               )}
             </div>

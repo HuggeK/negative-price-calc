@@ -264,6 +264,8 @@ export interface AnalysisResult {
     nasta_avgift_kr_per_man: number;
     extra_avgift_kr_per_man: number;
     extra_avgift_kr_per_ar: number;
+    /** Extra fee over the loaded data period (the primary basis shown in the UI). */
+    extra_avgift_over_period_sek: number;
     /** Sustained clipped quarters (≥2 consecutive at the cap) the estimate is based on. */
     kvartar_vid_max: number;
     /** Installed PV capacity (kWp) if given — bounds the estimate. */
@@ -275,7 +277,9 @@ export interface AnalysisResult {
     uppskattat_extra_varde_sek: number;
     uppskattad_extra_export_kwh_per_ar: number;
     uppskattat_extra_varde_per_ar_sek: number;
-    /** Annual unlocked export value minus the extra annual subscription fee. */
+    /** Unlocked export value minus the extra fee, over the loaded period (primary). */
+    netto_over_period_sek: number;
+    /** Same, annualized (≈, secondary). */
     netto_per_ar_sek: number;
     vart_att_uppgradera: boolean;
   };
@@ -294,6 +298,8 @@ export interface AnalysisResult {
     lagre_avgift_kr_per_man: number;
     sparad_avgift_kr_per_man: number;
     sparad_avgift_kr_per_ar: number;
+    /** Subscription saving over the loaded data period (the primary basis shown in the UI). */
+    sparad_avgift_over_period_sek: number;
     /** Producing quarters whose average power exceeds the lower fuse limit (would be clipped). */
     kvartar_over_lagre_tak: number;
     period_dagar: number;
@@ -301,7 +307,9 @@ export interface AnalysisResult {
     kapat_varde_sek: number;
     kapad_export_kwh_per_ar: number;
     kapat_varde_per_ar_sek: number;
-    /** Annual subscription saving minus the clipped export value. */
+    /** Subscription saving over the period minus the clipped export value (primary). */
+    netto_over_period_sek: number;
+    /** Same, annualized (≈, secondary). */
     netto_per_ar_sek: number;
     vart_att_sanka: boolean;
   };

@@ -654,12 +654,15 @@ export function analyze(
     upgNextAmps !== undefined
       ? (() => {
           const periodDays = (prodEnd - prodStart) / DAY_MS;
+          const periodMonths = periodDays / 30.437;
           const annualFactor = periodDays > 0 ? 365 / periodDays : 0;
           const curFee = gridMonthlyFee;
           const nextFee = opts.nextFuseMonthlyFee ?? 0;
           const extraFeeMonth = nextFee - curFee;
           const extraFeeYear = extraFeeMonth * 12;
+          const extraFeePeriod = extraFeeMonth * periodMonths;
           const unlockedValYear = upgUnlockedValue * annualFactor;
+          const nettoPeriod = upgUnlockedValue - extraFeePeriod;
           const nettoYear = unlockedValYear - extraFeeYear;
           return {
             nuvarande_sakring_amp: upgFuseAmps,
@@ -670,6 +673,7 @@ export function analyze(
             nasta_avgift_kr_per_man: round(nextFee, 2),
             extra_avgift_kr_per_man: round(extraFeeMonth, 2),
             extra_avgift_kr_per_ar: round(extraFeeYear, 2),
+            extra_avgift_over_period_sek: round(extraFeePeriod, 2),
             kvartar_vid_max: upgClipIntervals,
             installerad_kwp: upgKwp != null ? round(upgKwp, 2) : undefined,
             begransas_av_kwp: upgKwp != null && upgKwp < upgNextLimitKw,
@@ -678,8 +682,9 @@ export function analyze(
             uppskattat_extra_varde_sek: round(upgUnlockedValue, 2),
             uppskattad_extra_export_kwh_per_ar: round(upgUnlockedKwh * annualFactor, 1),
             uppskattat_extra_varde_per_ar_sek: round(unlockedValYear, 2),
+            netto_over_period_sek: round(nettoPeriod, 2),
             netto_per_ar_sek: round(nettoYear, 2),
-            vart_att_uppgradera: nettoYear > 0,
+            vart_att_uppgradera: nettoPeriod > 0,
           };
         })()
       : undefined;
@@ -691,12 +696,15 @@ export function analyze(
     dnPrevAmps !== undefined
       ? (() => {
           const periodDays = (prodEnd - prodStart) / DAY_MS;
+          const periodMonths = periodDays / 30.437;
           const annualFactor = periodDays > 0 ? 365 / periodDays : 0;
           const curFee = gridMonthlyFee;
           const lowerFee = opts.lowerFuseMonthlyFee ?? 0;
           const savingMonth = curFee - lowerFee;
           const savingYear = savingMonth * 12;
+          const savingPeriod = savingMonth * periodMonths;
           const lostValYear = dnLostValue * annualFactor;
+          const nettoPeriod = savingPeriod - dnLostValue;
           const nettoYear = savingYear - lostValYear;
           return {
             nuvarande_sakring_amp: upgFuseAmps,
@@ -707,14 +715,16 @@ export function analyze(
             lagre_avgift_kr_per_man: round(lowerFee, 2),
             sparad_avgift_kr_per_man: round(savingMonth, 2),
             sparad_avgift_kr_per_ar: round(savingYear, 2),
+            sparad_avgift_over_period_sek: round(savingPeriod, 2),
             kvartar_over_lagre_tak: dnClipIntervals,
             period_dagar: round(periodDays, 1),
             kapad_export_kwh: round(dnLostKwh, 1),
             kapat_varde_sek: round(dnLostValue, 2),
             kapad_export_kwh_per_ar: round(dnLostKwh * annualFactor, 1),
             kapat_varde_per_ar_sek: round(lostValYear, 2),
+            netto_over_period_sek: round(nettoPeriod, 2),
             netto_per_ar_sek: round(nettoYear, 2),
-            vart_att_sanka: nettoYear > 0,
+            vart_att_sanka: nettoPeriod > 0,
           };
         })()
       : undefined;

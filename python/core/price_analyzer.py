@@ -566,11 +566,14 @@ class PriceAnalyzer:
             period_days = (prod_end - prod_start).total_seconds() / 86400.0
             annual_factor = 365.0 / period_days if period_days > 0 else 0.0
 
+            period_months = period_days / 30.437
             cur_fee = grid_monthly_fee or 0.0
             next_fee = next_fuse_monthly_fee or 0.0
             extra_fee_month = next_fee - cur_fee
             extra_fee_year = extra_fee_month * 12.0
+            extra_fee_period = extra_fee_month * period_months
             unlocked_value_year = unlocked_value * annual_factor
+            net_period = unlocked_value - extra_fee_period
             net_year = unlocked_value_year - extra_fee_year
             analysis['fuse_upgrade'] = {
                 'current_fuse_amp': fuse_amps,
@@ -581,6 +584,7 @@ class PriceAnalyzer:
                 'next_fee_sek_per_month': round(next_fee, 2),
                 'extra_fee_sek_per_month': round(extra_fee_month, 2),
                 'extra_fee_sek_per_year': round(extra_fee_year, 2),
+                'extra_fee_over_period_sek': round(extra_fee_period, 2),
                 'sustained_clip_intervals': int(sustained.sum()),
                 'installed_kwp': round(installed_kwp, 2) if installed_kwp is not None else None,
                 'limited_by_kwp': bool(installed_kwp is not None and installed_kwp < next_limit_kw),
@@ -589,8 +593,9 @@ class PriceAnalyzer:
                 'estimated_extra_value_sek': round(unlocked_value, 2),
                 'estimated_extra_export_kwh_per_year': round(unlocked_kwh * annual_factor, 1),
                 'estimated_extra_value_per_year_sek': round(unlocked_value_year, 2),
+                'net_over_period_sek': round(net_period, 2),
                 'net_per_year_sek': round(net_year, 2),
-                'worth_upgrading': bool(net_year > 0),
+                'worth_upgrading': bool(net_period > 0),
             }
 
         # Fuse downgrade ("would a smaller fuse pay off?"). Mirrors analyze.ts
@@ -614,11 +619,14 @@ class PriceAnalyzer:
             period_days = (prod_end - prod_start).total_seconds() / 86400.0
             annual_factor = 365.0 / period_days if period_days > 0 else 0.0
 
+            period_months = period_days / 30.437
             cur_fee = grid_monthly_fee or 0.0
             lower_fee = lower_fuse_monthly_fee or 0.0
             saving_month = cur_fee - lower_fee
             saving_year = saving_month * 12.0
+            saving_period = saving_month * period_months
             lost_value_year = lost_value * annual_factor
+            net_period = saving_period - lost_value
             net_year = saving_year - lost_value_year
             analysis['fuse_downgrade'] = {
                 'current_fuse_amp': fuse_amps,
@@ -629,14 +637,16 @@ class PriceAnalyzer:
                 'lower_fee_sek_per_month': round(lower_fee, 2),
                 'saved_fee_sek_per_month': round(saving_month, 2),
                 'saved_fee_sek_per_year': round(saving_year, 2),
+                'saved_fee_over_period_sek': round(saving_period, 2),
                 'intervals_over_lower_limit': int(over.sum()),
                 'period_days': round(period_days, 1),
                 'clipped_export_kwh': round(lost_kwh, 1),
                 'clipped_value_sek': round(lost_value, 2),
                 'clipped_export_kwh_per_year': round(lost_kwh * annual_factor, 1),
                 'clipped_value_per_year_sek': round(lost_value_year, 2),
+                'net_over_period_sek': round(net_period, 2),
                 'net_per_year_sek': round(net_year, 2),
-                'worth_downgrading': bool(net_year > 0),
+                'worth_downgrading': bool(net_period > 0),
             }
 
         # Echo the inputs used (SEK units), for traceability / export. Mirrors the web
