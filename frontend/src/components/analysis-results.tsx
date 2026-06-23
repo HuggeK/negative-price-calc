@@ -175,6 +175,7 @@ interface AnalysisData {
   };
   exportersattning?: {
     moms_pct?: number;
+    moms_pa_forsaljning?: boolean;
     spot_sek_per_kwh?: number;
     elnat_fast_sek_per_kwh?: number;
     elnat_pct?: number;
@@ -219,6 +220,7 @@ interface AnalysisData {
     elomrade?: string;
     huvudsakring_a?: string;
     moms_pct?: string;
+    momsregistrerad?: boolean;
     elnat_fast_ore_per_kwh?: string;
     elnat_rorlig_pct?: string;
     elhandel_fast_ore_per_kwh?: string;
@@ -762,7 +764,10 @@ export function AnalysisResults({
               <InfoTooltip text={EXPORT_COMP_INFO} />
             </div>
             <CardDescription>
-              Vad du faktiskt får betalt per exporterad kWh (inkl. {formatNumber(data.exportersattning.moms_pct, 0)}% moms)
+              Vad du faktiskt får betalt per exporterad kWh{" "}
+              {data.exportersattning.moms_pa_forsaljning
+                ? `(inkl. ${formatNumber(data.exportersattning.moms_pct, 0)}% moms)`
+                : "(utan moms – ej momsregistrerad)"}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -1055,6 +1060,7 @@ export function AnalysisResults({
                 push("Elområde", pp.elomrade);
                 push("Huvudsäkring", pp.huvudsakring_a ? `${pp.huvudsakring_a} A` : undefined);
                 push("Moms", pp.moms_pct ? `${pp.moms_pct} %` : undefined);
+                push("Momsregistrerad", pp.momsregistrerad ? "Ja" : "Nej");
                 push("Elnät fast", pp.elnat_fast_ore_per_kwh ? `${pp.elnat_fast_ore_per_kwh} öre/kWh` : undefined);
                 push("Elnät rörlig", pp.elnat_rorlig_pct ? `${pp.elnat_rorlig_pct} % av spot` : undefined);
                 push("Elhandel fast", pp.elhandel_fast_ore_per_kwh ? `${pp.elhandel_fast_ore_per_kwh} öre/kWh` : undefined);

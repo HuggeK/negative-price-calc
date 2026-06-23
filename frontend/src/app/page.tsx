@@ -43,6 +43,7 @@ const DEFAULT_SETTINGS = {
   selectedArea: "SE_4",
   fuseAmps: "",
   vatRate: "25",
+  vatRegistered: false,
   gridFixedOre: "",
   gridPct: "5",
   traderFixedOre: "",
@@ -107,6 +108,8 @@ export default function Home() {
   const [selectedArea, setSelectedArea] = useState(DEFAULT_SETTINGS.selectedArea);
   const [fuseAmps, setFuseAmps] = useState(DEFAULT_SETTINGS.fuseAmps); // "" = Vet ej / skip
   const [vatRate, setVatRate] = useState(DEFAULT_SETTINGS.vatRate);
+  // Momsregistrerad: VAT added to export (sales) only when true; buy side always has VAT.
+  const [vatRegistered, setVatRegistered] = useState(DEFAULT_SETTINGS.vatRegistered);
   // Export compensation, split per company. Fixed parts in öre/kWh, variable in % of spot.
   // Elnätsbolag (grid): förlustersättning.
   const [gridFixedOre, setGridFixedOre] = useState(DEFAULT_SETTINGS.gridFixedOre);
@@ -166,6 +169,7 @@ export default function Home() {
         if (typeof s.selectedArea === "string") setSelectedArea(s.selectedArea);
         if (typeof s.fuseAmps === "string") setFuseAmps(s.fuseAmps);
         if (typeof s.vatRate === "string") setVatRate(s.vatRate);
+        if (typeof s.vatRegistered === "boolean") setVatRegistered(s.vatRegistered);
         if (typeof s.gridFixedOre === "string") setGridFixedOre(s.gridFixedOre);
         if (typeof s.gridPct === "string") setGridPct(s.gridPct);
         if (typeof s.traderFixedOre === "string") setTraderFixedOre(s.traderFixedOre);
@@ -199,6 +203,7 @@ export default function Home() {
           selectedArea,
           fuseAmps,
           vatRate,
+          vatRegistered,
           gridFixedOre,
           gridPct,
           traderFixedOre,
@@ -222,6 +227,7 @@ export default function Home() {
     selectedArea,
     fuseAmps,
     vatRate,
+    vatRegistered,
     gridFixedOre,
     gridPct,
     traderFixedOre,
@@ -339,6 +345,7 @@ export default function Home() {
         priceGranularity: priceData.granularity,
         fuseAmps: fuseAmps ? Number(fuseAmps) : undefined,
         vatRate: numOrUndef(vatRate),
+        vatRegistered,
         gridFixed: oreToSek(gridFixedOre),
         gridPct: numOrUndef(gridPct),
         traderFixed: oreToSek(traderFixedOre),
@@ -369,6 +376,7 @@ export default function Home() {
         elomrade: selectedArea,
         huvudsakring_a: fuseAmps || undefined,
         moms_pct: vatRate || undefined,
+        momsregistrerad: vatRegistered,
         elnat_fast_ore_per_kwh: gridFixedOre || undefined,
         elnat_rorlig_pct: gridPct || undefined,
         elhandel_fast_ore_per_kwh: traderFixedOre || undefined,
@@ -419,7 +427,7 @@ export default function Home() {
     } finally {
       setIsAnalyzing(false);
     }
-  }, [selectedFiles, selectedArea, fuseAmps, vatRate, gridFixedOre, gridPct, traderFixedOre, traderPct, gridMonthlyFee, nextFuseFee, installedKwp, traderMonthlyFee, energyTaxOre, gridFeeOre, traderQuarterPrice, aiInsights, aiKey, addLog]);
+  }, [selectedFiles, selectedArea, fuseAmps, vatRate, vatRegistered, gridFixedOre, gridPct, traderFixedOre, traderPct, gridMonthlyFee, nextFuseFee, installedKwp, traderMonthlyFee, energyTaxOre, gridFeeOre, traderQuarterPrice, aiInsights, aiKey, addLog]);
 
   // Run analysis immediately (report shown in-browser). Subscription is optional and,
   // when opted in, submitted best-effort without blocking the analysis.
@@ -499,6 +507,7 @@ export default function Home() {
     setSelectedArea(DEFAULT_SETTINGS.selectedArea);
     setFuseAmps(DEFAULT_SETTINGS.fuseAmps);
     setVatRate(DEFAULT_SETTINGS.vatRate);
+    setVatRegistered(DEFAULT_SETTINGS.vatRegistered);
     setGridFixedOre(DEFAULT_SETTINGS.gridFixedOre);
     setGridPct(DEFAULT_SETTINGS.gridPct);
     setTraderFixedOre(DEFAULT_SETTINGS.traderFixedOre);
@@ -544,6 +553,7 @@ export default function Home() {
       `# Elområde;${p.elomrade ?? area}`,
       `# Huvudsäkring (A);${p.huvudsakring_a ?? ""}`,
       `# Moms (%);${p.moms_pct ?? ""}`,
+      `# Momsregistrerad;${p.momsregistrerad ? "ja" : "nej"}`,
       `# Elnät fast (öre/kWh);${p.elnat_fast_ore_per_kwh ?? ""}`,
       `# Elnät rörlig (% av spot);${p.elnat_rorlig_pct ?? ""}`,
       `# Elhandel fast (öre/kWh);${p.elhandel_fast_ore_per_kwh ?? ""}`,
@@ -738,9 +748,15 @@ export default function Home() {
                 <div className="space-y-2">
                   <Label htmlFor="vat">Moms (%)</Label>
                   <Input id="vat" inputMode="decimal" value={vatRate} onChange={(e) => setVatRate(e.target.value)} placeholder="25" className="max-w-[8rem]" />
+                  <div className="flex items-center justify-between gap-3 pt-1">
+                    <Label htmlFor="vat-registered" className="font-normal">Momsregistrerad (moms på försäljning)</Label>
+                    <Switch id="vat-registered" checked={vatRegistered} onCheckedChange={setVatRegistered} />
+                  </div>
                   <p className="text-xs text-muted-foreground">
-                    Används för både ersättningen nedan och värdet av självkonsumtion. Ange alla öre/kWh-värden nedan
-                    <span className="text-foreground"> exklusive moms</span> – momsen läggs på automatiskt. Sätt 0 om du inte är momsregistrerad.
+                    Ange alla öre/kWh-värden nedan <span className="text-foreground">exklusive moms</span>. Moms läggs på
+                    exportintäkten <span className="text-foreground">bara om du är momsregistrerad</span>. På köpt el
+                    (värdet av självkonsumtion) räknas moms <span className="text-foreground">alltid</span> – du betalar
+                    ju moms när du köper el.
                   </p>
                 </div>
 

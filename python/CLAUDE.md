@@ -28,7 +28,9 @@ changes there **first**, then mirror them here and add a test. Concretely:
 **Canonical valuation** lives in `core/price_analyzer.analyze_data()`:
 - Export compensation per company: `(spot + grid_fixed + spot·grid_pct% + trader_fixed +
   spot·trader_pct%) · (1+VAT)` (params `vat_rate`, `grid_fixed`, `grid_pct`,
-  `trader_fixed`, `trader_pct`).
+  `trader_fixed`, `trader_pct`). **VAT is asymmetric**: it's added to the export (sales) side
+  only when `vat_registered=True`; the self-consumption (buy) side always includes VAT
+  (a consumer always pays moms on bought electricity).
 - Self-consumption: `(spot + energy_tax + grid_fee)·(1+VAT)` vs. the effective export price
   (params `self_energy_tax`, `self_grid_fee`).
 - Export-at-loss: quarters where the effective price < 0 (`export_at_loss` block: count,

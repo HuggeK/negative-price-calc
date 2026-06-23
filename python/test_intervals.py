@@ -204,6 +204,7 @@ def test_export_compensation_and_self_consumption():
     a = PriceAnalyzer.analyze_data(
         merged,
         vat_rate=25,
+        vat_registered=True,
         grid_fixed=0.05,
         grid_pct=10,
         trader_fixed=0.1,
@@ -230,6 +231,28 @@ def test_export_compensation_and_self_consumption():
     assert s["increment_vs_export_sek_per_kwh"] == pytest.approx(0.875)
 
 
+def test_vat_is_asymmetric_sales_vs_buy():
+    # Sales VAT only when momsregistrerad; the buy (self-consumption) side always has VAT.
+    idx = pd.date_range("2025-11-03 00:00", periods=1, freq="h")
+    prices = pd.DataFrame({"price_eur_per_mwh": [100.0]}, index=idx)  # -> 1.0 SEK/kWh @ rate 10
+    production = pd.DataFrame({"production_kwh": [4.0]}, index=idx)
+    merged = PriceAnalyzer.merge_data(prices, production, eur_sek_rate=10.0)
+    kw = dict(vat_rate=25, grid_fixed=0.1, self_energy_tax=0.4, self_grid_fee=0.6)
+
+    not_reg = PriceAnalyzer.analyze_data(merged, **kw)
+    assert not_reg["export_compensation"]["vat_on_sales"] is False
+    assert not_reg["export_compensation"]["effective_price_sek_per_kwh"] == pytest.approx(1.1)  # ex-moms
+    assert not_reg["self_consumption"]["value_self_sek_per_kwh"] == pytest.approx(2.5)  # buy side WITH moms
+    assert not_reg["self_consumption"]["export_value_sek_per_kwh"] == pytest.approx(1.1)
+    assert not_reg["self_consumption"]["increment_vs_export_sek_per_kwh"] == pytest.approx(1.4)
+
+    reg = PriceAnalyzer.analyze_data(merged, vat_registered=True, **kw)
+    assert reg["export_compensation"]["vat_on_sales"] is True
+    assert reg["export_compensation"]["effective_price_sek_per_kwh"] == pytest.approx(1.375)  # 1.1*1.25
+    assert reg["self_consumption"]["value_self_sek_per_kwh"] == pytest.approx(2.5)  # unchanged
+    assert reg["self_consumption"]["export_value_sek_per_kwh"] == pytest.approx(1.375)
+
+
 def test_self_consumption_quarter_price_toggle():
     # More production in the cheap hour: realized=1.5, average=2.0 SEK/kWh.
     idx = pd.date_range("2025-11-03 00:00", periods=2, freq="h")
@@ -238,7 +261,7 @@ def test_self_consumption_quarter_price_toggle():
     merged = PriceAnalyzer.merge_data(prices, production, eur_sek_rate=10.0)
 
     on = PriceAnalyzer.analyze_data(
-        merged, vat_rate=25, self_energy_tax=0.4, self_grid_fee=0.6, self_quarter_price=True
+        merged, vat_rate=25, vat_registered=True, self_energy_tax=0.4, self_grid_fee=0.6, self_quarter_price=True
     )["self_consumption"]
     assert on["quarter_price"] is True
     assert on["spot_sek_per_kwh"] == pytest.approx(1.5)  # realized
@@ -247,7 +270,7 @@ def test_self_consumption_quarter_price_toggle():
     assert on["total_saving_sek"] == pytest.approx(5.0)  # 4 kWh × (3.125 − 1.875)
 
     off = PriceAnalyzer.analyze_data(
-        merged, vat_rate=25, self_energy_tax=0.4, self_grid_fee=0.6, self_quarter_price=False
+        merged, vat_rate=25, vat_registered=True, self_energy_tax=0.4, self_grid_fee=0.6, self_quarter_price=False
     )["self_consumption"]
     assert off["quarter_price"] is False
     assert off["spot_sek_per_kwh"] == pytest.approx(2.0)  # period average
@@ -282,7 +305,7 @@ def test_monthly_forecast_full_months():
     production = pd.DataFrame({"production_kwh": [1.0] * len(idx)}, index=idx)
     merged = PriceAnalyzer.merge_data(prices, production, eur_sek_rate=10.0)
 
-    a = PriceAnalyzer.analyze_data(merged, vat_rate=25, grid_monthly_fee=100, trader_monthly_fee=20)
+    a = PriceAnalyzer.analyze_data(merged, vat_rate=25, vat_registered=True, grid_monthly_fee=100, trader_monthly_fee=20)
     f = a["monthly_forecast"]
     assert f["full_months"] == 2
     assert f["fixed_monthly_sek"] == pytest.approx(120.0)

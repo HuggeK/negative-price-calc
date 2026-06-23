@@ -123,6 +123,7 @@ class PriceAnalyzer:
         fuse_amps: float = None,
         voltage: float = 400.0,
         vat_rate: float = None,
+        vat_registered: bool = False,
         grid_fixed: float = None,
         grid_pct: float = None,
         trader_fixed: float = None,
@@ -145,6 +146,9 @@ class PriceAnalyzer:
             voltage (float): Line voltage for the 3-phase power calc (default 400 V).
             vat_rate (float, optional): VAT, fraction (0.25) or percent (25). Used by both
                 valuations below.
+            vat_registered (bool): If True, VAT is added to the EXPORT (sales) side; otherwise
+                export is paid ex-moms. The self-consumption (buy) side always includes VAT, as
+                a consumer always pays moms on purchased electricity. Default False.
             grid_fixed (float, optional): Elnätsbolag fixed förlustersättning in SEK/kWh.
             grid_pct (float, optional): Elnätsbolag variable förlustersättning, % of spot.
             trader_fixed (float, optional): Elhandelsbolag fixed påslag/avdrag in SEK/kWh
@@ -329,6 +333,9 @@ class PriceAnalyzer:
             return v / 100.0 if v > 1 else v
 
         vat = _norm_vat(vat_rate)
+        # VAT on the EXPORT (sales) side applies only when the producer is VAT-registered;
+        # the BUY side (self-consumption / cost of bought electricity) always includes VAT.
+        sales_vat = vat if vat_registered else 0.0
         g_fixed = grid_fixed or 0.0
         g_pct = grid_pct or 0.0
         t_fixed = trader_fixed or 0.0
@@ -336,7 +343,7 @@ class PriceAnalyzer:
 
         def _effective(spot):
             before = spot + g_fixed + spot * (g_pct / 100.0) + t_fixed + spot * (t_pct / 100.0)
-            return before * (1 + vat)
+            return before * (1 + sales_vat)
 
         if total_kwh > 0 and any(x is not None for x in (vat_rate, grid_fixed, grid_pct, trader_fixed, trader_pct)):
             elnat_var = realized_spot * (g_pct / 100.0)
@@ -344,10 +351,11 @@ class PriceAnalyzer:
             elhandel_var = realized_spot * (t_pct / 100.0)
             elhandel_total = t_fixed + elhandel_var
             before_vat = realized_spot + elnat_total + elhandel_total
-            effective = before_vat * (1 + vat)
+            effective = before_vat * (1 + sales_vat)
             effective_total = effective * total_kwh
             analysis['export_compensation'] = {
-                'vat_pct': round(vat * 100, 1),
+                'vat_pct': round(sales_vat * 100, 1),
+                'vat_on_sales': bool(vat_registered),
                 'spot_sek_per_kwh': round(realized_spot, 4),
                 'elnat_fixed_sek_per_kwh': round(g_fixed, 4),
                 'elnat_pct': round(g_pct, 2),
@@ -416,7 +424,7 @@ class PriceAnalyzer:
             price_sek = merged_df['price_sek_per_kwh']
             prod_kwh = merged_df['production_kwh']
             eff_price = (price_sek + g_fixed + price_sek * (g_pct / 100.0)
-                         + t_fixed + price_sek * (t_pct / 100.0)) * (1 + vat)
+                         + t_fixed + price_sek * (t_pct / 100.0)) * (1 + sales_vat)
             loss_mask = (eff_price < 0) & (prod_kwh > 0)
             loss_count = int(loss_mask.sum())
             if loss_count > 0:
@@ -471,7 +479,7 @@ class PriceAnalyzer:
                 scale = 1.0 if (complete or covered_days <= 0) else days_in_month / covered_days
                 revenue_month = float(grp['export_value_sek'].sum())
                 kwh_month = float(grp['production_kwh'].sum())
-                effective = (1 + vat) * ((1 + pct_frac) * revenue_month + tot_fixed * kwh_month)
+                effective = (1 + sales_vat) * ((1 + pct_frac) * revenue_month + tot_fixed * kwh_month)
                 forecast_months.append({
                     'period': str(period),
                     'complete': complete,
@@ -569,6 +577,7 @@ class PriceAnalyzer:
         # app's `parametrar` block.
         analysis['parameters'] = {
             'vat_rate': vat_rate,
+            'vat_registered': vat_registered,
             'grid_fixed_sek_per_kwh': grid_fixed,
             'grid_pct': grid_pct,
             'trader_fixed_sek_per_kwh': trader_fixed,

@@ -83,6 +83,7 @@ export interface AnalysisResult {
     elomrade?: string;
     huvudsakring_a?: string;
     moms_pct?: string;
+    momsregistrerad?: boolean;
     elnat_fast_ore_per_kwh?: string;
     elnat_rorlig_pct?: string;
     elhandel_fast_ore_per_kwh?: string;
@@ -146,6 +147,8 @@ export interface AnalysisResult {
    */
   exportersattning?: {
     moms_pct: number;
+    /** True if VAT was added to the export price (only when momsregistrerad). */
+    moms_pa_forsaljning: boolean;
     spot_sek_per_kwh: number;
     /** Elnätsbolag (grid): fixed + variable (% of spot) förlustersättning. */
     elnat_fast_sek_per_kwh: number;

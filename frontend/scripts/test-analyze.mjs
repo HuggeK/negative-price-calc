@@ -126,6 +126,7 @@ console.log("Test 5: export compensation + self-consumption");
   // elnät: 5 öre fast + 10% rörlig ; elhandel: 10 öre fast + 0% rörlig
   const r = analyze(prod, prices, {
     vatRate: 25,
+    vatRegistered: true,
     gridFixed: 0.05,
     gridPct: 10,
     traderFixed: 0.1,
@@ -246,7 +247,7 @@ console.log("Test 9: monthly forecast + daily aggregate");
     { start: dec31_23, end: dec31_23 + H, sekPerKwh: 2.0, eurPerKwh: 0 },
   ];
   // Data spans all of Nov + Dec -> both months are "complete". VAT 25%, fixed fees 120/mån.
-  const r = analyze(prod, prices, { vatRate: 25, gridMonthlyFee: 100, traderMonthlyFee: 20 });
+  const r = analyze(prod, prices, { vatRate: 25, vatRegistered: true, gridMonthlyFee: 100, traderMonthlyFee: 20 });
   const f = r.manads_prognos;
   approx(f.fullstandiga_manader, 2, "forecast: full months");
   approx(f.fasta_avgifter_sek_per_man, 120, "forecast: fixed monthly fees");
@@ -268,12 +269,12 @@ console.log("Test 10: self-consumption quarter-price toggle");
     { start: base + H, end: base + 2 * H, sekPerKwh: 3.0, eurPerKwh: 0 },
   ];
   // realized (production-weighted) = 1.5 ; average (time-weighted) = 2.0
-  const on = analyze(prod, prices, { vatRate: 25, selfEnergyTax: 0.4, selfGridFee: 0.6, selfQuarterPrice: true });
+  const on = analyze(prod, prices, { vatRate: 25, vatRegistered: true, selfEnergyTax: 0.4, selfGridFee: 0.6, selfQuarterPrice: true });
   eq(on.sjalvkonsumtion.kvartpris, true, "self ON: kvartpris flag");
   approx(on.sjalvkonsumtion.spot_sek_per_kwh, 1.5, "self ON: spot basis = realized");
   approx(on.sjalvkonsumtion.varde_self_sek_per_kwh, 3.125, "self ON: value (1.5+0.4+0.6)*1.25");
 
-  const off = analyze(prod, prices, { vatRate: 25, selfEnergyTax: 0.4, selfGridFee: 0.6, selfQuarterPrice: false });
+  const off = analyze(prod, prices, { vatRate: 25, vatRegistered: true, selfEnergyTax: 0.4, selfGridFee: 0.6, selfQuarterPrice: false });
   eq(off.sjalvkonsumtion.kvartpris, false, "self OFF: kvartpris flag");
   approx(off.sjalvkonsumtion.spot_sek_per_kwh, 2.0, "self OFF: spot basis = average");
   approx(off.sjalvkonsumtion.varde_self_sek_per_kwh, 3.75, "self OFF: value (2.0+0.4+0.6)*1.25");
@@ -418,6 +419,30 @@ console.log("Test 13: combine multi-file");
   const one = combineProduction([a]);
   eq(one.filesCombined, 1, "combine: single file passthrough");
   eq(one.rows.length, 2, "combine: single file rows unchanged");
+}
+
+// --- Test 14: asymmetric VAT (sales only if momsregistrerad; buy side always) ---
+console.log("Test 14: asymmetric VAT");
+{
+  const prod = [{ start: base, end: base + H, kwh: 4 }];
+  const prices = [{ start: base, end: base + H, sekPerKwh: 1.0, eurPerKwh: 0 }];
+  const opts = { vatRate: 25, gridFixed: 0.1, selfEnergyTax: 0.4, selfGridFee: 0.6 };
+
+  // Not VAT-registered (default): export is paid ex-moms; self-use still avoids moms on buying.
+  const notReg = analyze(prod, prices, opts);
+  approx(notReg.exportersattning.effektivt_pris_sek_per_kwh, 1.1, "export ex-moms (1.0 + 0.10)");
+  eq(notReg.exportersattning.moms_pa_forsaljning, false, "flag: no VAT on sales");
+  approx(notReg.sjalvkonsumtion.varde_self_sek_per_kwh, 2.5, "self value WITH moms ((1+0.4+0.6)*1.25)");
+  approx(notReg.sjalvkonsumtion.export_varde_sek_per_kwh, 1.1, "self export ref ex-moms");
+  // Self-use beats export by the avoided 25% on buying + the lost export uplift.
+  approx(notReg.sjalvkonsumtion.okning_vs_export_sek_per_kwh, 1.4, "self increment vs export (2.5 - 1.1)");
+
+  // VAT-registered: export gets +25% too.
+  const reg = analyze(prod, prices, { ...opts, vatRegistered: true });
+  approx(reg.exportersattning.effektivt_pris_sek_per_kwh, 1.375, "export incl moms (1.1 * 1.25)");
+  eq(reg.exportersattning.moms_pa_forsaljning, true, "flag: VAT on sales");
+  approx(reg.sjalvkonsumtion.varde_self_sek_per_kwh, 2.5, "self value unchanged (buy side always moms)");
+  approx(reg.sjalvkonsumtion.export_varde_sek_per_kwh, 1.375, "self export ref incl moms");
 }
 
 console.log(failures === 0 ? "\nALL PASSED" : `\n${failures} FAILURE(S)`);

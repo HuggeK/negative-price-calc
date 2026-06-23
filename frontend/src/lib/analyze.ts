@@ -41,6 +41,13 @@ export interface AnalyzeOptions {
   voltage?: number;
   /** VAT rate, accepted as a fraction (0.25) or a percentage (25). Used by both valuations. */
   vatRate?: number;
+  /**
+   * Whether the producer is VAT-registered (momsregistrerad). VAT is applied to the EXPORT
+   * (sales) side only when true — a non-registered microproducer is paid ex-moms. The
+   * self-consumption / cost-of-bought-electricity side ALWAYS includes VAT, because a consumer
+   * always pays moms on purchased electricity. Default false.
+   */
+  vatRegistered?: boolean;
   /** Elnätsbolag (grid): fixed förlustersättning in SEK/kWh (may be negative). */
   gridFixed?: number;
   /** Elnätsbolag (grid): variable förlustersättning as a percentage of spot (e.g. 5). */
@@ -102,7 +109,8 @@ function normalizeVat(v: number | undefined): number {
  * spot, so applying it to the energy-weighted average spot equals a per-interval result.
  */
 function effectiveExportPrice(spot: number, opts: AnalyzeOptions): number {
-  const vat = normalizeVat(opts.vatRate);
+  // Sales-side VAT applies only to a VAT-registered producer; otherwise export is paid ex-moms.
+  const vat = opts.vatRegistered ? normalizeVat(opts.vatRate) : 0;
   const gridFixed = opts.gridFixed ?? 0;
   const gridPct = opts.gridPct ?? 0;
   const traderFixed = opts.traderFixed ?? 0;
@@ -119,7 +127,8 @@ function analyzeExportCompensation(
   totalKwh: number,
   opts: AnalyzeOptions
 ): NonNullable<AnalysisResult["exportersattning"]> {
-  const vat = normalizeVat(opts.vatRate);
+  // VAT on the sales side only when momsregistrerad.
+  const salesVat = opts.vatRegistered ? normalizeVat(opts.vatRate) : 0;
   const gridFixed = opts.gridFixed ?? 0;
   const gridPct = opts.gridPct ?? 0;
   const traderFixed = opts.traderFixed ?? 0;
@@ -131,7 +140,7 @@ function analyzeExportCompensation(
   const elhandelTotal = traderFixed + elhandelRorlig;
 
   const beforeVat = spotWavg + elnatTotal + elhandelTotal;
-  const effective = beforeVat * (1 + vat);
+  const effective = beforeVat * (1 + salesVat);
   const effectiveTotal = effective * totalKwh;
   // Break-even spot: the spot price at which the effective price hits zero. Below this you
   // sell at a loss. Solve (spot·(1+totalPct) + totalFixed) = 0.
@@ -139,7 +148,8 @@ function analyzeExportCompensation(
   const totalFixed = gridFixed + traderFixed;
   const breakEvenSpot = 1 + totalPctFrac !== 0 ? -totalFixed / (1 + totalPctFrac) : 0;
   return {
-    moms_pct: round(vat * 100, 1),
+    moms_pct: round(salesVat * 100, 1),
+    moms_pa_forsaljning: !!opts.vatRegistered,
     spot_sek_per_kwh: round(spotWavg, 4),
     elnat_fast_sek_per_kwh: round(gridFixed, 4),
     elnat_pct: round(gridPct, 2),
@@ -328,9 +338,11 @@ export function analyze(
   // (förlustersättning % + fast påslag/avdrag, then VAT). A quarter is "exported at a
   // loss" when this is below zero — you pay to export. Records each such segment.
   const vatFrac = normalizeVat(opts.vatRate);
+  // Sales-side VAT: applied to export revenue only when the producer is VAT-registered.
+  const salesVatFrac = opts.vatRegistered ? vatFrac : 0;
   const totalPctFrac = ((opts.gridPct ?? 0) + (opts.traderPct ?? 0)) / 100;
   const totalFixed = (opts.gridFixed ?? 0) + (opts.traderFixed ?? 0);
-  const effPrice = (spot: number) => (spot + spot * totalPctFrac + totalFixed) * (1 + vatFrac);
+  const effPrice = (spot: number) => (spot + spot * totalPctFrac + totalFixed) * (1 + salesVatFrac);
 
   interface LossSeg {
     start: number;
@@ -519,7 +531,7 @@ export function analyze(
       const daysInMonth = (monthEnd - monthStart) / DAY_MS;
       const complete = prodStart <= monthStart && prodEnd >= monthEnd;
       const scale = complete || coveredDays <= 0 ? 1 : daysInMonth / coveredDays;
-      const effective = (1 + vatFrac) * ((1 + totalPctFrac) * mm.revenue_sek + totalFixed * mm.production_kwh);
+      const effective = (1 + salesVatFrac) * ((1 + totalPctFrac) * mm.revenue_sek + totalFixed * mm.production_kwh);
       return {
         period,
         complete,
