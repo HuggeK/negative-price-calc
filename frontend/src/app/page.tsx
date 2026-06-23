@@ -651,6 +651,7 @@ export default function Home() {
       ...(aiSummary ? { ai_explanation_sv: aiSummary } : {}),
       _metadata: {
         filename: displayMeta?.filename ?? selectedFiles[0]?.name ?? "",
+        filenames: selectedFiles.map((f) => f.name),
         area: displayMeta?.area ?? selectedArea,
         currency: "SEK",
         granularity: result.input.granularity,
