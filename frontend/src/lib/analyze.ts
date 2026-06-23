@@ -69,6 +69,12 @@ export interface AnalyzeOptions {
    * against the current grid monthly fee (gridMonthlyFee).
    */
   nextFuseMonthlyFee?: number;
+  /**
+   * Installed PV capacity in kWp. Bounds the fuse-upgrade estimate: a bigger fuse can only
+   * unlock export up to what the panels can actually produce, so the achievable power is
+   * min(next fuse limit, kWp). If kWp ≤ the current fuse limit, the fuse isn't the bottleneck.
+   */
+  installedKwp?: number;
 }
 
 /** Standard Swedish main-fuse ratings (amperes), in ascending order. */
@@ -357,19 +363,39 @@ export function analyze(
   const upgCurLimitKw = (SQRT3 * upgVoltage * upgFuseAmps) / 1000;
   const upgNextLimitKw = upgNextAmps ? (SQRT3 * upgVoltage * upgNextAmps) / 1000 : 0;
   const upgThreshold = upgCurLimitKw * MAXED_FRACTION;
-  const upgHeadroomKw = upgNextLimitKw - upgCurLimitKw;
+  // The bigger fuse can only help up to what the panels can actually deliver (installed kWp).
+  const upgKwp = opts.installedKwp;
+  const upgAchievableKw = upgKwp != null ? Math.min(upgNextLimitKw, upgKwp) : upgNextLimitKw;
+  const upgHeadroomKw = Math.max(0, upgAchievableKw - upgCurLimitKw);
+  // Only count *sustained* clipping (≥2 consecutive quarters at the cap). An isolated single
+  // maxed quarter is a momentary peak, not capacity the fuse is really holding back.
+  const upgClipped =
+    upgNextAmps !== undefined
+      ? sortedProd.map((p) => {
+          const h = (p.end - p.start) / MS_PER_HOUR;
+          return h > 0 && p.kwh / h >= upgThreshold;
+        })
+      : [];
+  const upgSustained = upgClipped.map((c, i) => {
+    if (!c) return false;
+    const prevAdj = i > 0 && upgClipped[i - 1] && sortedProd[i - 1].end === sortedProd[i].start;
+    const nextAdj =
+      i < upgClipped.length - 1 && upgClipped[i + 1] && sortedProd[i].end === sortedProd[i + 1].start;
+    return prevAdj || nextAdj;
+  });
   let upgUnlockedKwh = 0;
   let upgUnlockedValue = 0;
   let upgClipIntervals = 0;
 
   // Sweep: lo is the first price interval that could overlap the current production row.
   let lo = 0;
-  for (const p of sortedProd) {
+  for (let pi = 0; pi < sortedProd.length; pi++) {
+    const p = sortedProd[pi];
     totalProductionKwh += p.kwh;
     const span = p.end - p.start;
     if (span <= 0) continue;
 
-    const rowClipping = upgNextAmps !== undefined && p.kwh / (span / MS_PER_HOUR) >= upgThreshold;
+    const rowClipping = upgSustained[pi] === true;
     if (rowClipping) upgClipIntervals += 1;
 
     while (lo < sortedPrice.length && sortedPrice[lo].end <= p.start) lo++;
@@ -557,6 +583,8 @@ export function analyze(
             extra_avgift_kr_per_man: round(extraFeeMonth, 2),
             extra_avgift_kr_per_ar: round(extraFeeYear, 2),
             kvartar_vid_max: upgClipIntervals,
+            installerad_kwp: upgKwp != null ? round(upgKwp, 2) : undefined,
+            begransas_av_kwp: upgKwp != null && upgKwp < upgNextLimitKw,
             period_dagar: round(periodDays, 1),
             uppskattad_extra_export_kwh: round(upgUnlockedKwh, 1),
             uppskattat_extra_varde_sek: round(upgUnlockedValue, 2),

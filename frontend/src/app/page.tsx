@@ -48,6 +48,7 @@ const DEFAULT_SETTINGS = {
   traderPct: "",
   gridMonthlyFee: "",
   nextFuseFee: "",
+  installedKwp: "",
   traderMonthlyFee: "",
   energyTaxOre: "",
   gridFeeOre: "",
@@ -114,6 +115,8 @@ export default function Home() {
   const [gridMonthlyFee, setGridMonthlyFee] = useState(DEFAULT_SETTINGS.gridMonthlyFee);
   // Monthly grid fee for the NEXT fuse size up (enables the upgrade-worthiness analysis).
   const [nextFuseFee, setNextFuseFee] = useState(DEFAULT_SETTINGS.nextFuseFee);
+  // Installed PV capacity (kWp) — bounds the fuse-upgrade estimate.
+  const [installedKwp, setInstalledKwp] = useState(DEFAULT_SETTINGS.installedKwp);
   const [traderMonthlyFee, setTraderMonthlyFee] = useState(DEFAULT_SETTINGS.traderMonthlyFee);
   // Self-consumption valuation (separate, optional). Inputs in öre/kWh.
   const [energyTaxOre, setEnergyTaxOre] = useState(DEFAULT_SETTINGS.energyTaxOre);
@@ -163,6 +166,7 @@ export default function Home() {
         if (typeof s.traderPct === "string") setTraderPct(s.traderPct);
         if (typeof s.gridMonthlyFee === "string") setGridMonthlyFee(s.gridMonthlyFee);
         if (typeof s.nextFuseFee === "string") setNextFuseFee(s.nextFuseFee);
+        if (typeof s.installedKwp === "string") setInstalledKwp(s.installedKwp);
         if (typeof s.traderMonthlyFee === "string") setTraderMonthlyFee(s.traderMonthlyFee);
         if (typeof s.energyTaxOre === "string") setEnergyTaxOre(s.energyTaxOre);
         if (typeof s.gridFeeOre === "string") setGridFeeOre(s.gridFeeOre);
@@ -193,6 +197,7 @@ export default function Home() {
           traderPct,
           gridMonthlyFee,
           nextFuseFee,
+          installedKwp,
           traderMonthlyFee,
           energyTaxOre,
           gridFeeOre,
@@ -213,6 +218,7 @@ export default function Home() {
     traderPct,
     gridMonthlyFee,
     nextFuseFee,
+    installedKwp,
     traderMonthlyFee,
     energyTaxOre,
     gridFeeOre,
@@ -308,6 +314,7 @@ export default function Home() {
         traderPct: numOrUndef(traderPct),
         gridMonthlyFee: numOrUndef(gridMonthlyFee),
         nextFuseMonthlyFee: numOrUndef(nextFuseFee),
+        installedKwp: numOrUndef(installedKwp),
         traderMonthlyFee: numOrUndef(traderMonthlyFee),
         selfEnergyTax: oreToSek(energyTaxOre),
         selfGridFee: oreToSek(gridFeeOre),
@@ -337,6 +344,7 @@ export default function Home() {
         elhandel_rorlig_pct: traderPct || undefined,
         elnat_manadsavgift_kr: gridMonthlyFee || undefined,
         elnat_manadsavgift_nasta_sakring_kr: nextFuseFee || undefined,
+        installerad_kwp: installedKwp || undefined,
         elhandel_manadsavgift_kr: traderMonthlyFee || undefined,
         energiskatt_ore_per_kwh: energyTaxOre || undefined,
         natavgift_ore_per_kwh: gridFeeOre || undefined,
@@ -377,7 +385,7 @@ export default function Home() {
     } finally {
       setIsAnalyzing(false);
     }
-  }, [selectedFile, selectedArea, fuseAmps, vatRate, gridFixedOre, gridPct, traderFixedOre, traderPct, gridMonthlyFee, nextFuseFee, traderMonthlyFee, energyTaxOre, gridFeeOre, traderQuarterPrice, aiInsights, aiKey, addLog]);
+  }, [selectedFile, selectedArea, fuseAmps, vatRate, gridFixedOre, gridPct, traderFixedOre, traderPct, gridMonthlyFee, nextFuseFee, installedKwp, traderMonthlyFee, energyTaxOre, gridFeeOre, traderQuarterPrice, aiInsights, aiKey, addLog]);
 
   // Run analysis immediately (report shown in-browser). Subscription is optional and,
   // when opted in, submitted best-effort without blocking the analysis.
@@ -463,6 +471,7 @@ export default function Home() {
     setTraderPct(DEFAULT_SETTINGS.traderPct);
     setGridMonthlyFee(DEFAULT_SETTINGS.gridMonthlyFee);
     setNextFuseFee(DEFAULT_SETTINGS.nextFuseFee);
+    setInstalledKwp(DEFAULT_SETTINGS.installedKwp);
     setTraderMonthlyFee(DEFAULT_SETTINGS.traderMonthlyFee);
     setEnergyTaxOre(DEFAULT_SETTINGS.energyTaxOre);
     setGridFeeOre(DEFAULT_SETTINGS.gridFeeOre);
@@ -505,6 +514,7 @@ export default function Home() {
       `# Elhandel rörlig (% av spot);${p.elhandel_rorlig_pct ?? ""}`,
       `# Elnät månadsavgift (kr);${p.elnat_manadsavgift_kr ?? ""}`,
       `# Elnät månadsavgift nästa säkring (kr);${p.elnat_manadsavgift_nasta_sakring_kr ?? ""}`,
+      `# Installerad effekt (kWp);${p.installerad_kwp ?? ""}`,
       `# Elhandel månadsavgift (kr);${p.elhandel_manadsavgift_kr ?? ""}`,
       `# Energiskatt (öre/kWh);${p.energiskatt_ore_per_kwh ?? ""}`,
       `# Nätavgift (öre/kWh);${p.natavgift_ore_per_kwh ?? ""}`,
@@ -639,6 +649,20 @@ export default function Home() {
                     <p className="text-xs text-muted-foreground">
                       Fyll i för att se om det är värt att uppgradera huvudsäkringen ett steg (jämförs mot elnätets månadsavgift ovan).
                     </p>
+                    <div className="space-y-2 pt-1">
+                      <Label htmlFor="installed-kwp">Installerad effekt (kWp, valfritt)</Label>
+                      <Input
+                        id="installed-kwp"
+                        inputMode="decimal"
+                        value={installedKwp}
+                        onChange={(e) => setInstalledKwp(e.target.value)}
+                        placeholder="t.ex. 12"
+                        className="max-w-[12rem]"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Solcellsanläggningens toppeffekt. Begränsar uppskattningen – en större säkring hjälper bara upp till vad panelerna kan producera.
+                      </p>
+                    </div>
                   </div>
                 )}
 

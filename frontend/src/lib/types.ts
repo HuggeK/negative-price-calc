@@ -89,6 +89,7 @@ export interface AnalysisResult {
     elhandel_rorlig_pct?: string;
     elnat_manadsavgift_kr?: string;
     elnat_manadsavgift_nasta_sakring_kr?: string;
+    installerad_kwp?: string;
     elhandel_manadsavgift_kr?: string;
     energiskatt_ore_per_kwh?: string;
     natavgift_ore_per_kwh?: string;
@@ -240,8 +241,12 @@ export interface AnalysisResult {
     nasta_avgift_kr_per_man: number;
     extra_avgift_kr_per_man: number;
     extra_avgift_kr_per_ar: number;
-    /** Producing intervals (≈ quarters) that hit the current fuse cap. */
+    /** Sustained clipped quarters (≥2 consecutive at the cap) the estimate is based on. */
     kvartar_vid_max: number;
+    /** Installed PV capacity (kWp) if given — bounds the estimate. */
+    installerad_kwp?: number;
+    /** True if installed kWp is below the next fuse limit (panels, not fuse, are the cap). */
+    begransas_av_kwp?: boolean;
     period_dagar: number;
     uppskattad_extra_export_kwh: number;
     uppskattat_extra_varde_sek: number;

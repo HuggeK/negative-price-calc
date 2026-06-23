@@ -338,7 +338,7 @@ console.log("Test 12: fuse upgrade");
   } else {
     eq(u.nuvarande_sakring_amp, 16, "upgrade: current fuse 16 A");
     eq(u.nasta_sakring_amp, 20, "upgrade: next fuse 20 A");
-    eq(u.kvartar_vid_max, 96, "upgrade: all 96 quarters at cap");
+    eq(u.kvartar_vid_max, 96, "upgrade: 96 sustained quarters (all consecutive)");
     approx(u.extra_avgift_kr_per_man, 75, "upgrade: +75 kr/mån");
     approx(u.extra_avgift_kr_per_ar, 900, "upgrade: +900 kr/år");
     // Headroom = (20-16)/16 * capKw ≈ 0.25*11.08 = 2.77 kW over 24h = 66.5 kWh unlocked/day,
@@ -349,6 +349,39 @@ console.log("Test 12: fuse upgrade");
       failures++;
       console.error(`  ✗ upgrade: unlocked value annualization off (${JSON.stringify(u)})`);
     }
+  }
+
+  // 12b: isolated single maxed quarters (not consecutive) must NOT count as clipping.
+  {
+    const prod2 = [];
+    const prices2 = [];
+    for (let i = 0; i < 96; i++) {
+      const s = d0 + i * Q;
+      // Every OTHER quarter at the cap, the rest near zero -> no two in a row.
+      prod2.push({ start: s, end: s + Q, kwh: i % 2 === 0 ? capKw * 0.25 : 0.001 });
+      prices2.push({ start: s, end: s + Q, sekPerKwh: 1.0, eurPerKwh: 0 });
+    }
+    const r2 = analyze(prod2, prices2, {
+      productionGranularity: "15min", priceGranularity: "15min",
+      fuseAmps: 16, vatRate: 0, gridMonthlyFee: 200, nextFuseMonthlyFee: 275,
+    });
+    eq(r2.sakringsuppgradering.kvartar_vid_max, 0, "upgrade: isolated peaks don't count (need ≥2 in a row)");
+    approx(r2.sakringsuppgradering.uppskattat_extra_varde_sek, 0, "upgrade: no sustained clipping -> 0 unlocked");
+  }
+
+  // 12c: installed kWp below the next fuse limit bounds the headroom (and flags it).
+  {
+    const r3 = analyze(prod, prices, {
+      productionGranularity: "15min", priceGranularity: "15min",
+      fuseAmps: 16, vatRate: 0, gridMonthlyFee: 200, nextFuseMonthlyFee: 275,
+      installedKwp: 11.2, // just above 16 A cap (~11.08 kW), well below 20 A (~13.86 kW)
+    });
+    const u3 = r3.sakringsuppgradering;
+    eq(u3.begransas_av_kwp, true, "upgrade: flagged kWp-bounded");
+    // Headroom now min(13.86,11.2)-11.08 ≈ 0.12 kW << full 2.77 kW -> much less unlocked value.
+    const less = u3.uppskattat_extra_varde_sek < u.uppskattat_extra_varde_sek;
+    if (less) console.log(`  ✓ upgrade: kWp bound shrinks unlocked value (${u3.uppskattat_extra_varde_sek} < ${u.uppskattat_extra_varde_sek})`);
+    else { failures++; console.error(`  ✗ upgrade: kWp bound did not shrink value (${JSON.stringify(u3)})`); }
   }
 }
 

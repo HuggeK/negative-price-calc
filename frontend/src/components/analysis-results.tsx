@@ -148,6 +148,8 @@ interface AnalysisData {
     extra_avgift_kr_per_man?: number;
     extra_avgift_kr_per_ar?: number;
     kvartar_vid_max?: number;
+    installerad_kwp?: number;
+    begransas_av_kwp?: boolean;
     period_dagar?: number;
     uppskattad_extra_export_kwh?: number;
     uppskattat_extra_varde_sek?: number;
@@ -223,6 +225,7 @@ interface AnalysisData {
     elhandel_rorlig_pct?: string;
     elnat_manadsavgift_kr?: string;
     elnat_manadsavgift_nasta_sakring_kr?: string;
+    installerad_kwp?: string;
     elhandel_manadsavgift_kr?: string;
     energiskatt_ore_per_kwh?: string;
     natavgift_ore_per_kwh?: string;
@@ -718,13 +721,23 @@ export function AnalysisResults({
               <p className="font-medium text-foreground">Antaganden</p>
               <ul className="list-disc space-y-0.5 pl-4">
                 <li>
-                  Du slog i säkringstaket i {formatNumber(data.sakringsuppgradering.kvartar_vid_max)} kvartar under{" "}
-                  {formatNumber(data.sakringsuppgradering.period_dagar, 0)} dagars data; siffrorna är uppräknade till ett helt år.
+                  Endast <span className="font-medium text-foreground">sammanhängande</span> kapning räknas: {formatNumber(data.sakringsuppgradering.kvartar_vid_max)}{" "}
+                  kvartar där du slog i taket minst två kvartar i rad, under{" "}
+                  {formatNumber(data.sakringsuppgradering.period_dagar, 0)} dagars data (enstaka toppar ignoreras). Siffrorna är uppräknade till ett helt år.
                 </li>
                 <li>
-                  Bästa fall: antar att produktionen de kvartarna kunnat nå hela vägen upp till{" "}
-                  {formatNumber(data.sakringsuppgradering.nasta_sakring_kw, 1)} kW (frigjord effekt × tid).
+                  Bästa fall: antar att produktionen de kvartarna kunnat nå{" "}
+                  {data.sakringsuppgradering.installerad_kwp != null
+                    ? `upp till ${formatNumber(Math.min(data.sakringsuppgradering.installerad_kwp ?? 0, data.sakringsuppgradering.nasta_sakring_kw ?? 0), 1)} kW (lägst av nästa säkring och din effekt ${formatNumber(data.sakringsuppgradering.installerad_kwp, 1)} kWp)`
+                    : `hela vägen upp till ${formatNumber(data.sakringsuppgradering.nasta_sakring_kw, 1)} kW`}
+                  {" "}(frigjord effekt × tid).
                 </li>
+                {data.sakringsuppgradering.begransas_av_kwp && (
+                  <li className="text-foreground">
+                    Din installerade effekt ({formatNumber(data.sakringsuppgradering.installerad_kwp, 1)} kWp) ligger under nästa
+                    säkrings gräns – det är panelerna, inte säkringen, som sätter taket för hur mycket mer du kan exportera.
+                  </li>
+                )}
                 <li>
                   Den frigjorda exporten sker mitt på dagen då spotpriset ofta är lågt eller negativt – därför värderas den
                   till det effektiva priset just de kvartarna, inte snittet.
@@ -1048,6 +1061,7 @@ export function AnalysisResults({
                 push("Elhandel rörlig", pp.elhandel_rorlig_pct ? `${pp.elhandel_rorlig_pct} % av spot` : undefined);
                 push("Elnät månadsavgift", pp.elnat_manadsavgift_kr ? `${pp.elnat_manadsavgift_kr} kr/mån` : undefined);
                 push("Elnät månadsavgift (nästa säkring)", pp.elnat_manadsavgift_nasta_sakring_kr ? `${pp.elnat_manadsavgift_nasta_sakring_kr} kr/mån` : undefined);
+                push("Installerad effekt", pp.installerad_kwp ? `${pp.installerad_kwp} kWp` : undefined);
                 push("Elhandel månadsavgift", pp.elhandel_manadsavgift_kr ? `${pp.elhandel_manadsavgift_kr} kr/mån` : undefined);
                 push("Energiskatt", pp.energiskatt_ore_per_kwh ? `${pp.energiskatt_ore_per_kwh} öre/kWh` : undefined);
                 push("Nätavgift", pp.natavgift_ore_per_kwh ? `${pp.natavgift_ore_per_kwh} öre/kWh` : undefined);
