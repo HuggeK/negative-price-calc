@@ -29,7 +29,7 @@ import { StreamingTerminal, LogEntry } from "@/components/streaming-terminal";
 import { AnalysisResults } from "@/components/analysis-results";
 import { parseProductionCsv, assessResolution, combineProduction } from "@/lib/parseProduction";
 import { fetchPrices } from "@/lib/prices";
-import { analyze, nextFuseStep } from "@/lib/analyze";
+import { analyze, nextFuseStep, prevFuseStep } from "@/lib/analyze";
 import { generateAiSummary } from "@/lib/aiSummary";
 import type { AnalysisResult } from "@/lib/types";
 
@@ -57,6 +57,7 @@ const DEFAULT_SETTINGS = {
   traderPct: "",
   gridMonthlyFee: "",
   nextFuseFee: "",
+  lowerFuseFee: "",
   installedKwp: "",
   latitude: "",
   longitude: "",
@@ -128,6 +129,8 @@ export default function Home() {
   const [gridMonthlyFee, setGridMonthlyFee] = useState(DEFAULT_SETTINGS.gridMonthlyFee);
   // Monthly grid fee for the NEXT fuse size up (enables the upgrade-worthiness analysis).
   const [nextFuseFee, setNextFuseFee] = useState(DEFAULT_SETTINGS.nextFuseFee);
+  // Monthly grid fee for the NEXT fuse size DOWN (enables the downgrade-worthiness analysis).
+  const [lowerFuseFee, setLowerFuseFee] = useState(DEFAULT_SETTINGS.lowerFuseFee);
   // Installed PV capacity (kWp) — bounds the fuse-upgrade estimate.
   const [installedKwp, setInstalledKwp] = useState(DEFAULT_SETTINGS.installedKwp);
   // Position for SMHI STRÅNG solar-irradiance lookups.
@@ -183,6 +186,7 @@ export default function Home() {
         if (typeof s.traderPct === "string") setTraderPct(s.traderPct);
         if (typeof s.gridMonthlyFee === "string") setGridMonthlyFee(s.gridMonthlyFee);
         if (typeof s.nextFuseFee === "string") setNextFuseFee(s.nextFuseFee);
+        if (typeof s.lowerFuseFee === "string") setLowerFuseFee(s.lowerFuseFee);
         if (typeof s.installedKwp === "string") setInstalledKwp(s.installedKwp);
         if (typeof s.latitude === "string") setLatitude(s.latitude);
         if (typeof s.longitude === "string") setLongitude(s.longitude);
@@ -217,6 +221,7 @@ export default function Home() {
           traderPct,
           gridMonthlyFee,
           nextFuseFee,
+          lowerFuseFee,
           installedKwp,
           latitude,
           longitude,
@@ -241,6 +246,7 @@ export default function Home() {
     traderPct,
     gridMonthlyFee,
     nextFuseFee,
+    lowerFuseFee,
     installedKwp,
     latitude,
     longitude,
@@ -388,6 +394,7 @@ export default function Home() {
         traderPct: numOrUndef(traderPct),
         gridMonthlyFee: numOrUndef(gridMonthlyFee),
         nextFuseMonthlyFee: numOrUndef(nextFuseFee),
+        lowerFuseMonthlyFee: numOrUndef(lowerFuseFee),
         installedKwp: numOrUndef(installedKwp),
         traderMonthlyFee: numOrUndef(traderMonthlyFee),
         selfEnergyTax: oreToSek(energyTaxOre),
@@ -420,6 +427,7 @@ export default function Home() {
         elhandel_rorlig_pct: traderPct || undefined,
         elnat_manadsavgift_kr: gridMonthlyFee || undefined,
         elnat_manadsavgift_nasta_sakring_kr: nextFuseFee || undefined,
+        elnat_manadsavgift_lagre_sakring_kr: lowerFuseFee || undefined,
         installerad_kwp: installedKwp || undefined,
         elhandel_manadsavgift_kr: traderMonthlyFee || undefined,
         energiskatt_ore_per_kwh: energyTaxOre || undefined,
@@ -464,7 +472,7 @@ export default function Home() {
     } finally {
       setIsAnalyzing(false);
     }
-  }, [selectedFiles, selectedArea, fuseAmps, vatRate, vatRegistered, gridFixedOre, gridPct, traderFixedOre, traderPct, gridMonthlyFee, nextFuseFee, installedKwp, latitude, longitude, traderMonthlyFee, energyTaxOre, gridFeeOre, traderQuarterPrice, aiInsights, aiKey, addLog]);
+  }, [selectedFiles, selectedArea, fuseAmps, vatRate, vatRegistered, gridFixedOre, gridPct, traderFixedOre, traderPct, gridMonthlyFee, nextFuseFee, lowerFuseFee, installedKwp, latitude, longitude, traderMonthlyFee, energyTaxOre, gridFeeOre, traderQuarterPrice, aiInsights, aiKey, addLog]);
 
   // Run analysis immediately (report shown in-browser). Subscription is optional and,
   // when opted in, submitted best-effort without blocking the analysis.
@@ -551,6 +559,7 @@ export default function Home() {
     setTraderPct(DEFAULT_SETTINGS.traderPct);
     setGridMonthlyFee(DEFAULT_SETTINGS.gridMonthlyFee);
     setNextFuseFee(DEFAULT_SETTINGS.nextFuseFee);
+    setLowerFuseFee(DEFAULT_SETTINGS.lowerFuseFee);
     setInstalledKwp(DEFAULT_SETTINGS.installedKwp);
     setLatitude(DEFAULT_SETTINGS.latitude);
     setLongitude(DEFAULT_SETTINGS.longitude);
@@ -597,6 +606,7 @@ export default function Home() {
       `# Elhandel rörlig (% av spot);${p.elhandel_rorlig_pct ?? ""}`,
       `# Elnät månadsavgift (kr);${p.elnat_manadsavgift_kr ?? ""}`,
       `# Elnät månadsavgift nästa säkring (kr);${p.elnat_manadsavgift_nasta_sakring_kr ?? ""}`,
+      `# Elnät månadsavgift lägre säkring (kr);${p.elnat_manadsavgift_lagre_sakring_kr ?? ""}`,
       `# Installerad effekt (kWp);${p.installerad_kwp ?? ""}`,
       `# Elhandel månadsavgift (kr);${p.elhandel_manadsavgift_kr ?? ""}`,
       `# Energiskatt (öre/kWh);${p.energiskatt_ore_per_kwh ?? ""}`,
@@ -739,6 +749,26 @@ export default function Home() {
                     />
                     <p className="text-xs text-muted-foreground">
                       Fyll i för att se om det är värt att uppgradera huvudsäkringen ett steg (jämförs mot elnätets månadsavgift ovan).
+                    </p>
+                  </div>
+                )}
+
+                {fuseAmps && prevFuseStep(Number(fuseAmps)) !== undefined && (
+                  <div className="space-y-2">
+                    <Label htmlFor="lower-fuse-fee">
+                      Elnät månadsavgift för lägre säkring – {prevFuseStep(Number(fuseAmps))} A
+                      {" "}(≈ {Math.round((Math.sqrt(3) * 400 * Number(prevFuseStep(Number(fuseAmps)))) / 100) / 10} kW) (kr/mån, inkl. moms)
+                    </Label>
+                    <Input
+                      id="lower-fuse-fee"
+                      inputMode="decimal"
+                      value={lowerFuseFee}
+                      onChange={(e) => setLowerFuseFee(e.target.value)}
+                      placeholder="t.ex. 150"
+                      className="max-w-[12rem]"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Fyll i för att se om du kunde sänka säkringen ett steg – du sparar abonnemang men kapar exporttoppar över den lägre gränsen.
                     </p>
                   </div>
                 )}

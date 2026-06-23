@@ -77,6 +77,12 @@ export interface AnalyzeOptions {
    */
   nextFuseMonthlyFee?: number;
   /**
+   * Monthly grid subscription fee (SEK/month) for the NEXT fuse size DOWN. With fuseAmps,
+   * enables the "would lowering the fuse pay off?" analysis (fee saving vs the peak export it
+   * would clip). Compared against the current grid monthly fee (gridMonthlyFee).
+   */
+  lowerFuseMonthlyFee?: number;
+  /**
    * Installed PV capacity in kWp. Bounds the fuse-upgrade estimate: a bigger fuse can only
    * unlock export up to what the panels can actually produce, so the achievable power is
    * min(next fuse limit, kWp). If kWp ≤ the current fuse limit, the fuse isn't the bottleneck.
@@ -97,6 +103,16 @@ export const FUSE_LADDER = [16, 20, 25, 35, 50, 63, 80, 100, 125, 160, 200, 250]
 export function nextFuseStep(amps: number): number | undefined {
   for (const a of FUSE_LADDER) if (a > amps) return a;
   return undefined;
+}
+
+/** The next standard fuse rating strictly smaller than `amps` (undefined if already the smallest). */
+export function prevFuseStep(amps: number): number | undefined {
+  let prev: number | undefined;
+  for (const a of FUSE_LADDER) {
+    if (a < amps) prev = a;
+    else break;
+  }
+  return prev;
 }
 
 /** Normalize a VAT input: 25 -> 0.25, 0.25 -> 0.25. */
@@ -418,6 +434,16 @@ export function analyze(
   let upgUnlockedValue = 0;
   let upgClipIntervals = 0;
 
+  // Fuse-downgrade ("would a smaller fuse pay off?") accumulators. Unlike the upgrade, this is
+  // concrete: from your actual production we know exactly how much export would be clipped if
+  // the fuse were lowered (the part of each quarter's power above the lower limit).
+  const dnPrevAmps =
+    upgFuseAmps > 0 && opts.lowerFuseMonthlyFee != null ? prevFuseStep(upgFuseAmps) : undefined;
+  const dnPrevLimitKw = dnPrevAmps ? (SQRT3 * upgVoltage * dnPrevAmps) / 1000 : 0;
+  let dnLostKwh = 0;
+  let dnLostValue = 0;
+  let dnClipIntervals = 0;
+
   // Sweep: lo is the first price interval that could overlap the current production row.
   let lo = 0;
   for (let pi = 0; pi < sortedProd.length; pi++) {
@@ -428,6 +454,11 @@ export function analyze(
 
     const rowClipping = upgSustained[pi] === true;
     if (rowClipping) upgClipIntervals += 1;
+
+    // Would lowering the fuse clip this quarter? (avg power above the lower limit)
+    const rowPowerKw = p.kwh / (span / MS_PER_HOUR);
+    const dnRowClips = dnPrevAmps !== undefined && rowPowerKw > dnPrevLimitKw;
+    if (dnRowClips) dnClipIntervals += 1;
 
     while (lo < sortedPrice.length && sortedPrice[lo].end <= p.start) lo++;
 
@@ -445,6 +476,12 @@ export function analyze(
         const unlocked = upgHeadroomKw * hours; // extra kWh the bigger fuse could pass here
         upgUnlockedKwh += unlocked;
         upgUnlockedValue += unlocked * effPrice(q.sekPerKwh);
+      }
+
+      if (dnRowClips) {
+        const lost = (rowPowerKw - dnPrevLimitKw) * hours; // kWh above the lower limit (clipped)
+        dnLostKwh += lost;
+        dnLostValue += lost * effPrice(q.sekPerKwh);
       }
 
       totalMatchedKwh += energy;
@@ -647,6 +684,41 @@ export function analyze(
         })()
       : undefined;
 
+  // Fuse downgrade: weigh the annual subscription saving of a smaller fuse against the export
+  // it would clip (the part of each quarter's power above the lower limit). Concrete, from the
+  // actual production — not a best-case estimate like the upgrade.
+  const sakringsnedgradering =
+    dnPrevAmps !== undefined
+      ? (() => {
+          const periodDays = (prodEnd - prodStart) / DAY_MS;
+          const annualFactor = periodDays > 0 ? 365 / periodDays : 0;
+          const curFee = gridMonthlyFee;
+          const lowerFee = opts.lowerFuseMonthlyFee ?? 0;
+          const savingMonth = curFee - lowerFee;
+          const savingYear = savingMonth * 12;
+          const lostValYear = dnLostValue * annualFactor;
+          const nettoYear = savingYear - lostValYear;
+          return {
+            nuvarande_sakring_amp: upgFuseAmps,
+            nuvarande_sakring_kw: round(upgCurLimitKw, 2),
+            lagre_sakring_amp: dnPrevAmps,
+            lagre_sakring_kw: round(dnPrevLimitKw, 2),
+            nuvarande_avgift_kr_per_man: round(curFee, 2),
+            lagre_avgift_kr_per_man: round(lowerFee, 2),
+            sparad_avgift_kr_per_man: round(savingMonth, 2),
+            sparad_avgift_kr_per_ar: round(savingYear, 2),
+            kvartar_over_lagre_tak: dnClipIntervals,
+            period_dagar: round(periodDays, 1),
+            kapad_export_kwh: round(dnLostKwh, 1),
+            kapat_varde_sek: round(dnLostValue, 2),
+            kapad_export_kwh_per_ar: round(dnLostKwh * annualFactor, 1),
+            kapat_varde_per_ar_sek: round(lostValYear, 2),
+            netto_per_ar_sek: round(nettoYear, 2),
+            vart_att_sanka: nettoYear > 0,
+          };
+        })()
+      : undefined;
+
   // Quarters exported at a loss (effective price < 0), with the spot break-even threshold,
   // a daily loss series for charting, and the worst occasions for a table.
   const segMinutes = Math.min(
@@ -736,6 +808,7 @@ export function analyze(
     forlust_export,
     natanslutning,
     sakringsuppgradering,
+    sakringsnedgradering,
     meta: {
       price_granularity: opts.priceGranularity ?? "unknown",
       price_intervals: sortedPrice.length,

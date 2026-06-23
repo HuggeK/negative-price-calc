@@ -30,6 +30,7 @@ import {
   Info,
   SlidersHorizontal,
   ArrowUpCircle,
+  ArrowDownCircle,
 } from "lucide-react";
 import { PriceChart } from "./price-chart";
 import { PriceLineChart } from "./price-line-chart";
@@ -160,6 +161,24 @@ interface AnalysisData {
     netto_per_ar_sek?: number;
     vart_att_uppgradera?: boolean;
   };
+  sakringsnedgradering?: {
+    nuvarande_sakring_amp?: number;
+    nuvarande_sakring_kw?: number;
+    lagre_sakring_amp?: number;
+    lagre_sakring_kw?: number;
+    nuvarande_avgift_kr_per_man?: number;
+    lagre_avgift_kr_per_man?: number;
+    sparad_avgift_kr_per_man?: number;
+    sparad_avgift_kr_per_ar?: number;
+    kvartar_over_lagre_tak?: number;
+    period_dagar?: number;
+    kapad_export_kwh?: number;
+    kapat_varde_sek?: number;
+    kapad_export_kwh_per_ar?: number;
+    kapat_varde_per_ar_sek?: number;
+    netto_per_ar_sek?: number;
+    vart_att_sanka?: boolean;
+  };
   forlust_export?: {
     antal?: number;
     intervall_minuter?: number;
@@ -236,6 +255,7 @@ interface AnalysisData {
     elhandel_rorlig_pct?: string;
     elnat_manadsavgift_kr?: string;
     elnat_manadsavgift_nasta_sakring_kr?: string;
+    elnat_manadsavgift_lagre_sakring_kr?: string;
     installerad_kwp?: string;
     elhandel_manadsavgift_kr?: string;
     energiskatt_ore_per_kwh?: string;
@@ -352,6 +372,8 @@ const PEAK_POWER_INFO =
   "Den högsta medeleffekten (kW) under en enskild kvart – din kraftigaste exporttopp. Jämför med säkringsgränsen i diagrammet nedan.";
 const UPGRADE_INFO =
   "Väger den högre abonnemangsavgiften för nästa säkringssteg mot det (optimistiskt uppskattade) värdet av den export en större säkring hade frigjort under de kvartar du slår i taket. Frigjord export sker mitt på dagen när spotpriset ofta är lågt, så värdet är litet.";
+const DOWNGRADE_INFO =
+  "Väger den lägre abonnemangsavgiften för ett steg mindre säkring mot exporten du då skulle kapa (effekten över den lägre gränsen). Till skillnad från uppgraderingen är detta konkret – det räknas på din faktiska produktion, eftersom vi ser exakt vad som hade kapats. Lönar sig om besparingen är större än det kapade värdet per år.";
 const TIMING_INFO =
   "Hur mycket lägre (eller högre) pris du fick jämfört med marknadens enkla snittpris för perioden. Solel produceras mest mitt på dagen då spotpriset ofta är lägre.";
 const REALIZED_PRICE_INFO =
@@ -792,6 +814,82 @@ export function AnalysisResults({
         </Card>
       )}
 
+      {/* Fuse downgrade worthiness */}
+      {data.sakringsnedgradering && (
+        <Card className={data.sakringsnedgradering.vart_att_sanka ? "border-primary/30" : ""}>
+          <CardHeader className="pb-2">
+            <div className="flex items-center gap-2">
+              <ArrowDownCircle className="h-5 w-5 text-primary" />
+              <CardTitle className="text-lg">Skulle det löna sig att sänka huvudsäkringen?</CardTitle>
+              <InfoTooltip text={DOWNGRADE_INFO} />
+            </div>
+            <CardDescription>
+              Från {formatNumber(data.sakringsnedgradering.nuvarande_sakring_amp)} A
+              {" "}(≈ {formatNumber(data.sakringsnedgradering.nuvarande_sakring_kw, 1)} kW) till{" "}
+              {formatNumber(data.sakringsnedgradering.lagre_sakring_amp)} A
+              {" "}(≈ {formatNumber(data.sakringsnedgradering.lagre_sakring_kw, 1)} kW)
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <div
+                className={`text-2xl font-bold ${
+                  data.sakringsnedgradering.vart_att_sanka ? "text-primary" : "text-destructive"
+                }`}
+              >
+                {data.sakringsnedgradering.vart_att_sanka ? "Kan löna sig" : "Lönar sig troligen inte"}
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Netto:{" "}
+                <span className="font-mono font-semibold text-foreground">
+                  {formatCurrency(data.sakringsnedgradering.netto_per_ar_sek)}/år
+                </span>{" "}
+                (sparad avgift − kapad export)
+              </p>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div>
+                <div className="text-xl font-bold font-mono text-primary">
+                  +{formatCurrency(data.sakringsnedgradering.sparad_avgift_kr_per_man)}/mån
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  lägre abonnemang (+{formatCurrency(data.sakringsnedgradering.sparad_avgift_kr_per_ar)}/år)
+                </p>
+              </div>
+              <div>
+                <div className="text-xl font-bold font-mono text-destructive">
+                  {formatNumber(data.sakringsnedgradering.kapad_export_kwh_per_ar, 0)} kWh/år
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  kapad export ({formatNumber(data.sakringsnedgradering.kvartar_over_lagre_tak)} kvartar över gränsen)
+                </p>
+              </div>
+              <div>
+                <div className="text-xl font-bold font-mono text-destructive">
+                  −{formatCurrency(data.sakringsnedgradering.kapat_varde_per_ar_sek)}/år
+                </div>
+                <p className="text-sm text-muted-foreground">förlorat exportvärde</p>
+              </div>
+            </div>
+
+            <div className="rounded-md border border-border/50 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+              {data.sakringsnedgradering.kapad_export_kwh != null && data.sakringsnedgradering.kapad_export_kwh <= 0 ? (
+                <p>
+                  Din effekt överskred aldrig {formatNumber(data.sakringsnedgradering.lagre_sakring_kw, 1)} kW under perioden –
+                  en lägre säkring hade inte kapat något, så du sparar abonnemanget utan förlust.
+                </p>
+              ) : (
+                <p>
+                  Konkret uppskattning från din faktiska produktion: effekten över {formatNumber(data.sakringsnedgradering.lagre_sakring_kw, 1)} kW
+                  {" "}hade kapats. Siffrorna är uppräknade från {formatNumber(data.sakringsnedgradering.period_dagar, 0)} dagars data till ett helt år.
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Effective export compensation (what you actually get paid) */}
       {data.exportersattning && (
         <Card className="border-primary/20 bg-primary/5">
@@ -1109,6 +1207,7 @@ export function AnalysisResults({
                 push("Elhandel rörlig", pp.elhandel_rorlig_pct ? `${pp.elhandel_rorlig_pct} % av spot` : undefined);
                 push("Elnät månadsavgift", pp.elnat_manadsavgift_kr ? `${pp.elnat_manadsavgift_kr} kr/mån` : undefined);
                 push("Elnät månadsavgift (nästa säkring)", pp.elnat_manadsavgift_nasta_sakring_kr ? `${pp.elnat_manadsavgift_nasta_sakring_kr} kr/mån` : undefined);
+                push("Elnät månadsavgift (lägre säkring)", pp.elnat_manadsavgift_lagre_sakring_kr ? `${pp.elnat_manadsavgift_lagre_sakring_kr} kr/mån` : undefined);
                 push("Installerad effekt", pp.installerad_kwp ? `${pp.installerad_kwp} kWp` : undefined);
                 push("Elhandel månadsavgift", pp.elhandel_manadsavgift_kr ? `${pp.elhandel_manadsavgift_kr} kr/mån` : undefined);
                 push("Energiskatt", pp.energiskatt_ore_per_kwh ? `${pp.energiskatt_ore_per_kwh} öre/kWh` : undefined);

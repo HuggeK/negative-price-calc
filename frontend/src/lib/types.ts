@@ -102,6 +102,7 @@ export interface AnalysisResult {
     elhandel_rorlig_pct?: string;
     elnat_manadsavgift_kr?: string;
     elnat_manadsavgift_nasta_sakring_kr?: string;
+    elnat_manadsavgift_lagre_sakring_kr?: string;
     installerad_kwp?: string;
     elhandel_manadsavgift_kr?: string;
     energiskatt_ore_per_kwh?: string;
@@ -277,6 +278,32 @@ export interface AnalysisResult {
     /** Annual unlocked export value minus the extra annual subscription fee. */
     netto_per_ar_sek: number;
     vart_att_uppgradera: boolean;
+  };
+  /**
+   * Fuse-downgrade analysis: would a SMALLER fuse pay off? Weighs the annual subscription
+   * saving against the export it would clip (power above the lower limit). Concrete (from the
+   * actual production), not a best-case estimate. Present when a fuse size and the lower-step
+   * monthly fee are both given.
+   */
+  sakringsnedgradering?: {
+    nuvarande_sakring_amp: number;
+    nuvarande_sakring_kw: number;
+    lagre_sakring_amp: number;
+    lagre_sakring_kw: number;
+    nuvarande_avgift_kr_per_man: number;
+    lagre_avgift_kr_per_man: number;
+    sparad_avgift_kr_per_man: number;
+    sparad_avgift_kr_per_ar: number;
+    /** Producing quarters whose average power exceeds the lower fuse limit (would be clipped). */
+    kvartar_over_lagre_tak: number;
+    period_dagar: number;
+    kapad_export_kwh: number;
+    kapat_varde_sek: number;
+    kapad_export_kwh_per_ar: number;
+    kapat_varde_per_ar_sek: number;
+    /** Annual subscription saving minus the clipped export value. */
+    netto_per_ar_sek: number;
+    vart_att_sanka: boolean;
   };
   meta: {
     price_granularity: Granularity;

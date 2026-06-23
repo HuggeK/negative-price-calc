@@ -23,6 +23,17 @@ def next_fuse_step(amps: float) -> Optional[int]:
     return None
 
 
+def prev_fuse_step(amps: float) -> Optional[int]:
+    """The next standard fuse rating strictly smaller than ``amps`` (None if the smallest)."""
+    prev = None
+    for a in FUSE_LADDER:
+        if a < amps:
+            prev = a
+        else:
+            break
+    return prev
+
+
 class PriceAnalyzer:
     """Core analysis engine for price and production data.
 
@@ -131,6 +142,7 @@ class PriceAnalyzer:
         grid_monthly_fee: float = None,
         trader_monthly_fee: float = None,
         next_fuse_monthly_fee: float = None,
+        lower_fuse_monthly_fee: float = None,
         installed_kwp: float = None,
         self_energy_tax: float = None,
         self_grid_fee: float = None,
@@ -159,6 +171,8 @@ class PriceAnalyzer:
             trader_monthly_fee (float, optional): Elhandel fixed monthly fee in SEK/month.
             next_fuse_monthly_fee (float, optional): Elnät monthly fee for the NEXT fuse size up.
                 With fuse_amps, adds the ``fuse_upgrade`` worthiness block.
+            lower_fuse_monthly_fee (float, optional): Elnät monthly fee for the NEXT fuse size
+                DOWN. With fuse_amps, adds the ``fuse_downgrade`` block (fee saving vs clipped peaks).
             installed_kwp (float, optional): Installed PV capacity (kWp). Bounds the upgrade
                 estimate — a bigger fuse only unlocks export up to what the panels can produce.
             self_energy_tax (float, optional): Energy tax in SEK/kWh. Adds the
@@ -303,12 +317,18 @@ class PriceAnalyzer:
             power_kw = merged_df['production_kwh'] / interval_hours
             maxed = power_kw >= threshold
             hours_at_max = float(interval_hours[maxed].sum())
+            # Share is measured against the time you can actually export (the hours you were
+            # producing), not all 24 h — counting the night understates the bottleneck. (The
+            # browser app additionally narrows this to STRÅNG sunlit hours when a location is
+            # set; STRÅNG is browser-only, so here the basis is producing time.)
+            producing_hours = float(interval_hours[merged_df['production_kwh'] > 0].sum())
             analysis['grid_connection'] = {
                 'fuse_amp': fuse_amps,
                 'fuse_limit_kw': round(limit_kw, 2),
                 'peak_power_kw': round(float(power_kw.max()), 2),
                 'hours_at_max': round(hours_at_max, 2),
-                'share_time_at_max_pct': round(hours_at_max / analysis['total_hours'] * 100, 1) if analysis['total_hours'] else 0.0,
+                'share_time_at_max_pct': round(hours_at_max / producing_hours * 100, 1) if producing_hours else 0.0,
+                'share_basis': 'producing',
                 'energy_at_max_kwh': round(float(merged_df.loc[maxed, 'production_kwh'].sum()), 2),
                 'peaks': int(maxed.sum()),
             }
@@ -573,6 +593,52 @@ class PriceAnalyzer:
                 'worth_upgrading': bool(net_year > 0),
             }
 
+        # Fuse downgrade ("would a smaller fuse pay off?"). Mirrors analyze.ts
+        # sakringsnedgradering: weigh the annual subscription saving against the export a lower
+        # fuse would clip (power above the lower limit). Concrete, from the actual production.
+        prev_amp = prev_fuse_step(fuse_amps) if (fuse_amps and lower_fuse_monthly_fee is not None) else None
+        if prev_amp is not None:
+            cur_limit_kw = (3 ** 0.5) * voltage * fuse_amps / 1000.0
+            prev_limit_kw = (3 ** 0.5) * voltage * prev_amp / 1000.0
+            power = (merged_df['production_kwh'] / interval_hours).values
+            eff_all = _effective(merged_df['price_sek_per_kwh']).values
+            ih = interval_hours.values
+            over = power > prev_limit_kw
+            lost_kwh_arr = np.maximum(0.0, power - prev_limit_kw) * ih
+            lost_kwh = float(lost_kwh_arr.sum())
+            lost_value = float((lost_kwh_arr * eff_all).sum())
+
+            step_h = float(interval_hours.median()) if len(interval_hours) else 1.0
+            prod_start = merged_df.index.min()
+            prod_end = merged_df.index.max() + pd.Timedelta(hours=step_h)
+            period_days = (prod_end - prod_start).total_seconds() / 86400.0
+            annual_factor = 365.0 / period_days if period_days > 0 else 0.0
+
+            cur_fee = grid_monthly_fee or 0.0
+            lower_fee = lower_fuse_monthly_fee or 0.0
+            saving_month = cur_fee - lower_fee
+            saving_year = saving_month * 12.0
+            lost_value_year = lost_value * annual_factor
+            net_year = saving_year - lost_value_year
+            analysis['fuse_downgrade'] = {
+                'current_fuse_amp': fuse_amps,
+                'current_fuse_kw': round(cur_limit_kw, 2),
+                'lower_fuse_amp': prev_amp,
+                'lower_fuse_kw': round(prev_limit_kw, 2),
+                'current_fee_sek_per_month': round(cur_fee, 2),
+                'lower_fee_sek_per_month': round(lower_fee, 2),
+                'saved_fee_sek_per_month': round(saving_month, 2),
+                'saved_fee_sek_per_year': round(saving_year, 2),
+                'intervals_over_lower_limit': int(over.sum()),
+                'period_days': round(period_days, 1),
+                'clipped_export_kwh': round(lost_kwh, 1),
+                'clipped_value_sek': round(lost_value, 2),
+                'clipped_export_kwh_per_year': round(lost_kwh * annual_factor, 1),
+                'clipped_value_per_year_sek': round(lost_value_year, 2),
+                'net_per_year_sek': round(net_year, 2),
+                'worth_downgrading': bool(net_year > 0),
+            }
+
         # Echo the inputs used (SEK units), for traceability / export. Mirrors the web
         # app's `parametrar` block.
         analysis['parameters'] = {
@@ -585,6 +651,7 @@ class PriceAnalyzer:
             'grid_monthly_fee_sek': grid_monthly_fee,
             'trader_monthly_fee_sek': trader_monthly_fee,
             'next_fuse_monthly_fee_sek': next_fuse_monthly_fee,
+            'lower_fuse_monthly_fee_sek': lower_fuse_monthly_fee,
             'installed_kwp': installed_kwp,
             'self_energy_tax_sek_per_kwh': self_energy_tax,
             'self_grid_fee_sek_per_kwh': self_grid_fee,

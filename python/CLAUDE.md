@@ -20,6 +20,7 @@ changes there **first**, then mirror them here and add a test. Concretely:
 | `parseProduction.ts` `assessResolution()` | `core/intervals.py` `assess_resolution()` |
 | `parseProduction.ts` `combineProduction()` | `core/intervals.py` `combine_production()` |
 | `analyze.ts` `nextFuseStep()` / fuse-upgrade | `core/price_analyzer.py` `next_fuse_step()` + `fuse_upgrade` block |
+| `analyze.ts` `prevFuseStep()` / fuse-downgrade | `core/price_analyzer.py` `prev_fuse_step()` + `fuse_downgrade` block |
 | granularity helpers | `core/intervals.py` |
 
 > Browser-only (no Python mirror): `lib/strang.ts` (SMHI STRÅNG irradiance) — it relies on

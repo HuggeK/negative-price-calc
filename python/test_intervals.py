@@ -11,7 +11,7 @@ import pytest
 from core.intervals import (assess_resolution, combine_production,
                             granularity_from_hours, infer_step_hours,
                             interval_hours_series, step_consistency_pct)
-from core.price_analyzer import PriceAnalyzer, next_fuse_step
+from core.price_analyzer import PriceAnalyzer, next_fuse_step, prev_fuse_step
 
 
 def test_infer_step_hours_hourly_and_quarterly():
@@ -121,6 +121,46 @@ def test_next_fuse_step():
     assert next_fuse_step(20) == 25
     assert next_fuse_step(63) == 80
     assert next_fuse_step(250) is None
+
+
+def test_prev_fuse_step():
+    assert prev_fuse_step(20) == 16
+    assert prev_fuse_step(25) == 20
+    assert prev_fuse_step(16) is None
+
+
+def test_fuse_downgrade_clips_peaks():
+    # Current 20 A (~13.86 kW), lower 16 A (~11.08 kW). Hour 1 at 13 kW (clipped), hour 2 at 5.
+    idx = pd.date_range("2025-07-01 12:00", periods=2, freq="h")
+    prices = pd.DataFrame({"price_eur_per_mwh": [100.0, 100.0]}, index=idx)  # 1.0 SEK/kWh @ rate 10
+    production = pd.DataFrame({"production_kwh": [13.0, 5.0]}, index=idx)
+    merged = PriceAnalyzer.merge_data(prices, production, eur_sek_rate=10.0)
+    lower_kw = (3 ** 0.5) * 400 * 16 / 1000
+
+    d = PriceAnalyzer.analyze_data(
+        merged, fuse_amps=20, vat_rate=0, grid_monthly_fee=250, lower_fuse_monthly_fee=150
+    )["fuse_downgrade"]
+    assert d["lower_fuse_amp"] == 16
+    assert d["saved_fee_sek_per_month"] == pytest.approx(100.0)
+    assert d["saved_fee_sek_per_year"] == pytest.approx(1200.0)
+    assert d["intervals_over_lower_limit"] == 1
+    assert d["clipped_export_kwh"] == pytest.approx(13 - lower_kw, abs=0.05)
+    assert d["clipped_value_sek"] == pytest.approx((13 - lower_kw) * 1.0, abs=0.05)
+    assert isinstance(d["worth_downgrading"], bool)
+
+    assert "fuse_downgrade" not in PriceAnalyzer.analyze_data(merged, fuse_amps=20)
+
+
+def test_share_at_max_uses_producing_time():
+    # 4 hourly rows; only 2 produce. Hour 1 = 12 kWh (>16A ~11.08), hour 2 = 5, then two zeros.
+    idx = pd.date_range("2025-07-01 12:00", periods=4, freq="h")
+    prices = pd.DataFrame({"price_eur_per_mwh": [100.0] * 4}, index=idx)
+    production = pd.DataFrame({"production_kwh": [12.0, 5.0, 0.0, 0.0]}, index=idx)
+    merged = PriceAnalyzer.merge_data(prices, production, eur_sek_rate=10.0)
+    gc = PriceAnalyzer.analyze_data(merged, fuse_amps=16)["grid_connection"]
+    # 1 h at max over 2 producing hours -> 50% (not 25% over all 4 h).
+    assert gc["share_basis"] == "producing"
+    assert gc["share_time_at_max_pct"] == pytest.approx(50.0)
 
 
 def test_fuse_upgrade_sustained_and_kwp_bound():

@@ -1,6 +1,6 @@
 // Sanity tests for the interval-aware analysis engine.
 // Run: node --experimental-strip-types frontend/scripts/test-analyze.mjs
-import { analyze, nextFuseStep } from "../src/lib/analyze.ts";
+import { analyze, nextFuseStep, prevFuseStep } from "../src/lib/analyze.ts";
 import { parseProductionCsv, assessResolution, combineProduction } from "../src/lib/parseProduction.ts";
 
 let failures = 0;
@@ -489,6 +489,38 @@ console.log("Test 16: fuse share over sunlit/producing quarters");
   eq(loc.andel_bas_soltimmar, true, "share: sunlit-based with STRÅNG");
   approx(loc.namnare_kvartar, 4, "share: denominator = sunlit quarters");
   approx(loc.andel_tid_vid_max_pct, 50, "share: 2/4 of sunlit time");
+}
+
+// --- Test 17: fuse downgrade (smaller fuse: fee saving vs clipped peaks) ---
+console.log("Test 17: fuse downgrade");
+{
+  eq(prevFuseStep(20), 16, "prevFuseStep(20) = 16");
+  eq(prevFuseStep(16), undefined, "prevFuseStep(16) = undefined (smallest)");
+
+  // Current 20 A (~13.86 kW). Lower = 16 A (~11.08 kW). One hour at 13 kW (above 11.08),
+  // one at 5 kW (below). Lowering clips (13 - 11.08) kWh that hour.
+  const lowerKw = (Math.sqrt(3) * 400 * 16) / 1000;
+  const prod = [
+    { start: base, end: base + H, kwh: 13 },
+    { start: base + H, end: base + 2 * H, kwh: 5 },
+  ];
+  const prices = [
+    { start: base, end: base + H, sekPerKwh: 1, eurPerKwh: 0 },
+    { start: base + H, end: base + 2 * H, sekPerKwh: 1, eurPerKwh: 0 },
+  ];
+  const r = analyze(prod, prices, { fuseAmps: 20, vatRate: 0, gridMonthlyFee: 250, lowerFuseMonthlyFee: 150 });
+  const d = r.sakringsnedgradering;
+  eq(d.lagre_sakring_amp, 16, "downgrade: lower fuse 16 A");
+  approx(d.sparad_avgift_kr_per_man, 100, "downgrade: saving 100/mån");
+  approx(d.sparad_avgift_kr_per_ar, 1200, "downgrade: saving 1200/år");
+  eq(d.kvartar_over_lagre_tak, 1, "downgrade: 1 quarter above lower limit");
+  approx(d.kapad_export_kwh, 13 - lowerKw, "downgrade: clipped kWh = 13 - 11.08", 0.05);
+  approx(d.kapat_varde_sek, (13 - lowerKw) * 1, "downgrade: clipped value at spot 1", 0.05);
+  eq(typeof d.vart_att_sanka, "boolean", "downgrade: verdict present");
+
+  // No lower-fee given -> no block.
+  const r2 = analyze(prod, prices, { fuseAmps: 20 });
+  eq(r2.sakringsnedgradering, undefined, "downgrade: omitted without lower fee");
 }
 
 console.log(failures === 0 ? "\nALL PASSED" : `\n${failures} FAILURE(S)`);
