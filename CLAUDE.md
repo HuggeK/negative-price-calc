@@ -39,7 +39,8 @@ node --experimental-strip-types frontend/scripts/test-analyze.mjs
 - `app/page.tsx` — upload UI, settings (fuse, VAT, export compensation [fixed öre ± / loss %], self-consumption [energy tax + grid fee, öre], AI toggle), runs the analysis, renders results. Inputs are in öre/kWh.
 - `components/` — results cards, price chart, streaming log, file upload
 - `lib/` — the client-side engine:
-  - `parseProduction.ts` — CSV parsing (Swedish formats: semicolon, decimal comma, BOM; hourly/15-min/daily) + `assessResolution()` 15-min validation
+  - `parseProduction.ts` — CSV + Excel parsing (Swedish formats: semicolon, decimal comma, BOM; hourly/15-min/daily) + `assessResolution()` 15-min validation. Excel (`.xlsx`/`.xlsm`) goes through `xlsx.ts`; the "El Rapport" template (formula-only month tabs, real data in a hidden `Serie` matrix) is reconstructed into an hourly series.
+  - `xlsx.ts` — dependency-free `.xlsx`/`.xlsm` reader (manual ZIP parse + native `DecompressionStream` for DEFLATE + worksheet/shared-string/date-style XML → per-sheet string grids)
   - `prices.ts` — **elprisetjustnu.se** price client (CORS, no key, SEK/kWh, native 15-min)
   - `analyze.ts` — **interval-aware** analysis via overlap allocation; fuse flat-peak + export-compensation (elnätsbolag + elhandelsbolag, each fixed öre/kWh + variable % of spot, then VAT) + self-consumption valuation + per-quarter export-at-loss (count, daily series, worst-occasions table)
   - `aiSummary.ts` — optional Swedish AI summary via OpenRouter (browser, user-supplied key)

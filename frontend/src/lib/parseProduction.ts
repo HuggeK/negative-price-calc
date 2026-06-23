@@ -1,9 +1,10 @@
-// Client-side production-file parsing (CSV / text). Handles the common Swedish meter
-// export quirks: semicolon delimiters, decimal commas, thousands separators, and
-// hourly / 15-minute / daily granularity. Excel (.xlsx) is detected and rejected with
-// a clear message (export as CSV) to keep the static bundle dependency-free.
+// Client-side production-file parsing (CSV / text + Excel). Handles the common Swedish
+// meter export quirks: semicolon delimiters, decimal commas, thousands separators, and
+// hourly / 15-minute / daily granularity. Excel (.xlsx / .xlsm) is read with a tiny
+// dependency-free reader (see ./xlsx) so the static bundle stays light.
 
 import type { Granularity, ParsedProduction, ProductionInterval } from "./types";
+import { readWorkbook, type WorkbookSheet } from "./xlsx.ts";
 
 const DATE_HINTS = /(datum|date|tid|time|timestamp|från|start|period|hour|timme)/i;
 const PROD_HINTS =
@@ -120,9 +121,10 @@ function granularityFromMinutes(step: number): Granularity {
 }
 
 export function parseProductionCsv(text: string, filename = ""): ParsedProduction {
-  if (/\.xlsx?$/i.test(filename) && /PK/.test(text.slice(0, 4))) {
+  if (/\.xls[xm]?$/i.test(filename) && /PK/.test(text.slice(0, 4))) {
+    // Excel files are binary (a ZIP); route them through parseProductionXlsx, not here.
     throw new Error(
-      "Excel-filer (.xlsx) stöds inte i webbversionen. Exportera som CSV och försök igen."
+      "Excel-filer måste läsas som binärdata (använd Excel-inläsaren). Exportera som CSV om problemet kvarstår."
     );
   }
 
@@ -200,6 +202,146 @@ export function parseProductionCsv(text: string, filename = ""): ParsedProductio
     datetimeColumn: header[dtIdx] || `col${dtIdx}`,
     productionColumn: header[prodIdx] || `col${prodIdx}`,
   };
+}
+
+/** Lowercase Swedish month names, January-first, as used in the "El Rapport" template. */
+const SWE_MONTHS = [
+  "januari",
+  "februari",
+  "mars",
+  "april",
+  "maj",
+  "juni",
+  "juli",
+  "augusti",
+  "september",
+  "oktober",
+  "november",
+  "december",
+];
+
+function daysInMonth(year: number, month1: number): number {
+  return new Date(Date.UTC(year, month1, 0)).getUTCDate();
+}
+
+/**
+ * Reconstruct an hourly series from the Swedish "El Rapport" Excel template (the
+ * monthly-consumption workbook many grid companies hand out). Its visible monthly tabs
+ * are formula-only (no cached values), but the hidden "Serie" sheet holds the real
+ * hourly numbers as a matrix: one column per month, and 24 consecutive rows per day
+ * (hour 0..23), starting just below a header row that lists the month names.
+ *
+ * Returns "Datum;Värde" CSV text (so the normal CSV path handles intervals/units), or
+ * null if the workbook isn't this template.
+ */
+function reconstructElRapport(sheets: WorkbookSheet[]): string | null {
+  const serie = sheets.find((s) => s.name.trim().toLowerCase() === "serie");
+  if (!serie) return null;
+  const grid = serie.grid;
+
+  // Find the header row that names the months, and which column each month sits in.
+  let headerRow = -1;
+  const monthCol: number[] = new Array(12).fill(-1);
+  for (let r = 0; r < Math.min(grid.length, 6); r++) {
+    const row = grid[r];
+    let hits = 0;
+    const cols = new Array(12).fill(-1);
+    for (let c = 0; c < row.length; c++) {
+      const idx = SWE_MONTHS.indexOf(row[c].trim().toLowerCase());
+      if (idx >= 0 && cols[idx] === -1) {
+        cols[idx] = c;
+        hits++;
+      }
+    }
+    if (hits >= 6) {
+      headerRow = r;
+      for (let i = 0; i < 12; i++) monthCol[i] = cols[i];
+      break;
+    }
+  }
+  if (headerRow < 0) return null;
+
+  // Find the year (e.g. "2025"), usually in the top-left corner.
+  let year = -1;
+  for (let r = 0; r < Math.min(grid.length, headerRow + 1); r++) {
+    for (const cell of grid[r]) {
+      const m = /^(19|20)\d\d$/.exec(cell.trim());
+      if (m) {
+        year = +m[0];
+        break;
+      }
+    }
+    if (year > 0) break;
+  }
+  if (year < 0) return null;
+
+  const lines = ["Datum;Värde"];
+  for (let m = 0; m < 12; m++) {
+    const col = monthCol[m];
+    if (col < 0) continue;
+    const dim = daysInMonth(year, m + 1);
+    for (let i = 0; ; i++) {
+      const r = headerRow + 1 + i;
+      if (r >= grid.length) break;
+      const day = Math.floor(i / 24) + 1;
+      const hour = i % 24;
+      if (day > 31) break; // past this month's block in the matrix
+      if (day > dim) continue; // non-existent day (e.g. Feb 30) — skip
+      const raw = grid[r][col];
+      if (raw == null || raw.trim() === "") continue;
+      if (!Number.isFinite(parseNumber(raw))) continue;
+      const ts = `${year}-${String(m + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}T${String(
+        hour
+      ).padStart(2, "0")}:00:00`;
+      lines.push(`${ts};${raw}`);
+    }
+  }
+  return lines.length > 1 ? lines.join("\n") : null;
+}
+
+/** Turn a worksheet grid into semicolon-delimited text the CSV parser can consume. */
+function gridToCsv(grid: string[][]): string {
+  return grid
+    .map((row) => row.map((c) => (c.includes(";") || c.includes('"') ? `"${c.replace(/"/g, '""')}"` : c)).join(";"))
+    .filter((l) => l.replace(/;/g, "").trim() !== "")
+    .join("\n");
+}
+
+/**
+ * Parse an Excel workbook (.xlsx / .xlsm) into a production series. First tries the
+ * "El Rapport" monthly-consumption template (data lives in a hidden matrix sheet);
+ * otherwise treats each sheet as a plain table and reuses the CSV column detection,
+ * keeping whichever sheet yields the most rows.
+ */
+export async function parseProductionXlsx(
+  buf: ArrayBuffer,
+  filename = ""
+): Promise<ParsedProduction> {
+  const wb = await readWorkbook(buf);
+
+  const elRapport = reconstructElRapport(wb.sheets);
+  if (elRapport) {
+    return parseProductionCsv(elRapport, filename);
+  }
+
+  let best: ParsedProduction | null = null;
+  let lastErr: unknown = null;
+  for (const sheet of wb.sheets) {
+    const text = gridToCsv(sheet.grid);
+    if (text.split(/\r?\n/).filter((l) => l.trim() !== "").length < 2) continue;
+    try {
+      const parsed = parseProductionCsv(text, filename);
+      if (!best || parsed.rows.length > best.rows.length) best = parsed;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  if (best) return best;
+  throw new Error(
+    lastErr instanceof Error
+      ? `Kunde inte tolka Excel-filen: ${lastErr.message}`
+      : "Kunde inte hitta någon datum-/produktionskolumn i Excel-filen."
+  );
 }
 
 /** Result of validating that a parsed file is in 15-minute (quarter-hour) resolution. */

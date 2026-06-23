@@ -43,7 +43,12 @@ import {
 } from "@/lib/strang";
 import { StreamingTerminal, LogEntry } from "@/components/streaming-terminal";
 import { AnalysisResults } from "@/components/analysis-results";
-import { parseProductionCsv, assessResolution, combineProduction } from "@/lib/parseProduction";
+import {
+  parseProductionCsv,
+  parseProductionXlsx,
+  assessResolution,
+  combineProduction,
+} from "@/lib/parseProduction";
 import { fetchPrices } from "@/lib/prices";
 import { analyze, nextFuseStep, prevFuseStep } from "@/lib/analyze";
 import { generateAiSummary } from "@/lib/aiSummary";
@@ -362,8 +367,10 @@ export default function Home() {
       addLog("info", files.length > 1 ? `Läser in ${files.length} filer...` : `Läser in ${files[0].name}...`);
       const parsedParts = [];
       for (const f of files) {
-        const text = await f.text();
-        const p = parseProductionCsv(text, f.name);
+        const isExcel = /\.xls[xm]?$/i.test(f.name);
+        const p = isExcel
+          ? await parseProductionXlsx(await f.arrayBuffer(), f.name)
+          : parseProductionCsv(await f.text(), f.name);
         addLog(
           "success",
           `${f.name}: ${p.rows.length} rader (${GRANULARITY_LABEL[p.granularity] ?? p.granularity}).`
