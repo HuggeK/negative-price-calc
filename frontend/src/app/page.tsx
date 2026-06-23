@@ -68,6 +68,33 @@ const DEFAULT_SETTINGS = {
   aiInsights: false,
 };
 
+/**
+ * Realistic settings used when running the bundled example (a fully-configured SE4 case so the
+ * example showcases every section: export compensation, self-consumption, fuse up/downgrade and
+ * the SMHI STRÅNG location features). Same shape as DEFAULT_SETTINGS.
+ */
+const EXAMPLE_SETTINGS: typeof DEFAULT_SETTINGS = {
+  selectedArea: "SE_4",
+  fuseAmps: "25",
+  vatRate: "25",
+  vatRegistered: true,
+  gridFixedOre: "10,01",
+  gridPct: "5",
+  traderFixedOre: "7",
+  traderPct: "",
+  gridMonthlyFee: "1345",
+  nextFuseFee: "1765",
+  lowerFuseFee: "",
+  installedKwp: "63",
+  latitude: "55.6050", // Malmö (SE4) — enables the STRÅNG sunlit/potential-production features
+  longitude: "13.0038",
+  traderMonthlyFee: "59",
+  energyTaxOre: "36",
+  gridFeeOre: "16",
+  traderQuarterPrice: true,
+  aiInsights: false,
+};
+
 const GRANULARITY_LABEL: Record<string, string> = {
   "15min": "kvartsdata (15 min)",
   hourly: "timdata (60 min)",
@@ -271,12 +298,36 @@ export default function Home() {
     setLogs((prev) => [...prev, { timestamp, type, message }]);
   }, []);
 
-  const handleAnalyze = useCallback(async (filesArg?: File[]) => {
+  const handleAnalyze = useCallback(async (filesArg?: File[], override?: typeof DEFAULT_SETTINGS) => {
     const files = filesArg ?? selectedFiles;
     if (!files.length) {
       toast.error("Välj minst en fil först");
       return;
     }
+
+    // Effective settings: an explicit override (e.g. the example run) wins over the live UI
+    // state — avoids reading stale state right after setState in the example button.
+    const eff = override ?? {
+      selectedArea,
+      fuseAmps,
+      vatRate,
+      vatRegistered,
+      gridFixedOre,
+      gridPct,
+      traderFixedOre,
+      traderPct,
+      gridMonthlyFee,
+      nextFuseFee,
+      lowerFuseFee,
+      installedKwp,
+      latitude,
+      longitude,
+      traderMonthlyFee,
+      energyTaxOre,
+      gridFeeOre,
+      traderQuarterPrice,
+      aiInsights,
+    };
 
     setIsAnalyzing(true);
     setShowTerminal(true);
@@ -328,10 +379,10 @@ export default function Home() {
       const endMs = parsed.rows[parsed.rows.length - 1].end;
       const startStr = new Date(startMs).toISOString().slice(0, 10);
       const endStr = new Date(endMs).toISOString().slice(0, 10);
-      addLog("info", `Hämtar spotpriser för ${selectedArea} (${startStr} → ${endStr})...`);
+      addLog("info", `Hämtar spotpriser för ${eff.selectedArea} (${startStr} → ${endStr})...`);
 
       let lastPct = -1;
-      const priceData = await fetchPrices(selectedArea, startMs, endMs, {
+      const priceData = await fetchPrices(eff.selectedArea, startMs, endMs, {
         signal,
         onProgress: ({ done, total }) => {
           const pct = Math.floor((done / total) * 100);
@@ -357,15 +408,15 @@ export default function Home() {
       // position; falls back gracefully.
       let sunlitHourKeys: Set<string> | undefined;
       let solinstralning: AnalysisResult["solinstralning"] | undefined;
-      const latN = parseFloat(latitude.replace(",", "."));
-      const lonN = parseFloat(longitude.replace(",", "."));
+      const latN = parseFloat(eff.latitude.replace(",", "."));
+      const lonN = parseFloat(eff.longitude.replace(",", "."));
       if (Number.isFinite(latN) && Number.isFinite(lonN) && withinStrangCoverage(latN, lonN)) {
         try {
           addLog("info", "Hämtar SMHI STRÅNG-solinstrålning (soltimmar)...");
           const pts = await fetchStrangGlobalRadiation(latN, lonN, startMs, endMs, { signal });
           sunlitHourKeys = sunlitHourKeysStockholm(pts);
           const kwhPerM2 = irradianceKwhPerM2(pts);
-          const kwp = numOrUndef(installedKwp);
+          const kwp = numOrUndef(eff.installedKwp);
           solinstralning = {
             kwh_per_m2: Math.round(kwhPerM2 * 10) / 10,
             potentiell_produktion_kwh: kwp && kwp > 0 ? Math.round(potentialProductionKwh(kwhPerM2, kwp)) : undefined,
@@ -385,21 +436,21 @@ export default function Home() {
         productionGranularity: parsed.granularity,
         priceGranularity: priceData.granularity,
         sunlitHourKeys,
-        fuseAmps: fuseAmps ? Number(fuseAmps) : undefined,
-        vatRate: numOrUndef(vatRate),
-        vatRegistered,
-        gridFixed: oreToSek(gridFixedOre),
-        gridPct: numOrUndef(gridPct),
-        traderFixed: oreToSek(traderFixedOre),
-        traderPct: numOrUndef(traderPct),
-        gridMonthlyFee: numOrUndef(gridMonthlyFee),
-        nextFuseMonthlyFee: numOrUndef(nextFuseFee),
-        lowerFuseMonthlyFee: numOrUndef(lowerFuseFee),
-        installedKwp: numOrUndef(installedKwp),
-        traderMonthlyFee: numOrUndef(traderMonthlyFee),
-        selfEnergyTax: oreToSek(energyTaxOre),
-        selfGridFee: oreToSek(gridFeeOre),
-        selfQuarterPrice: traderQuarterPrice,
+        fuseAmps: eff.fuseAmps ? Number(eff.fuseAmps) : undefined,
+        vatRate: numOrUndef(eff.vatRate),
+        vatRegistered: eff.vatRegistered,
+        gridFixed: oreToSek(eff.gridFixedOre),
+        gridPct: numOrUndef(eff.gridPct),
+        traderFixed: oreToSek(eff.traderFixedOre),
+        traderPct: numOrUndef(eff.traderPct),
+        gridMonthlyFee: numOrUndef(eff.gridMonthlyFee),
+        nextFuseMonthlyFee: numOrUndef(eff.nextFuseFee),
+        lowerFuseMonthlyFee: numOrUndef(eff.lowerFuseFee),
+        installedKwp: numOrUndef(eff.installedKwp),
+        traderMonthlyFee: numOrUndef(eff.traderMonthlyFee),
+        selfEnergyTax: oreToSek(eff.energyTaxOre),
+        selfGridFee: oreToSek(eff.gridFeeOre),
+        selfQuarterPrice: eff.traderQuarterPrice,
       });
 
       if (analysis.meta.matched_kwh_pct < 99.5) {
@@ -411,38 +462,38 @@ export default function Home() {
       if (analysis.natanslutning) {
         addLog(
           "info",
-          `Nätanslutning: ${analysis.natanslutning.intervaller_vid_max} intervall vid max (säkring ${fuseAmps}A ≈ ${analysis.natanslutning.sakring_kw} kW).`
+          `Nätanslutning: ${analysis.natanslutning.intervaller_vid_max} intervall vid max (säkring ${eff.fuseAmps}A ≈ ${analysis.natanslutning.sakring_kw} kW).`
         );
       }
       if (solinstralning) analysis.solinstralning = solinstralning;
       // Echo the settings used (display units) into the result for export + display.
       analysis.parametrar = {
-        elomrade: selectedArea,
-        huvudsakring_a: fuseAmps || undefined,
-        moms_pct: vatRate || undefined,
-        momsregistrerad: vatRegistered,
-        elnat_fast_ore_per_kwh: gridFixedOre || undefined,
-        elnat_rorlig_pct: gridPct || undefined,
-        elhandel_fast_ore_per_kwh: traderFixedOre || undefined,
-        elhandel_rorlig_pct: traderPct || undefined,
-        elnat_manadsavgift_kr: gridMonthlyFee || undefined,
-        elnat_manadsavgift_nasta_sakring_kr: nextFuseFee || undefined,
-        elnat_manadsavgift_lagre_sakring_kr: lowerFuseFee || undefined,
-        installerad_kwp: installedKwp || undefined,
-        elhandel_manadsavgift_kr: traderMonthlyFee || undefined,
-        energiskatt_ore_per_kwh: energyTaxOre || undefined,
-        natavgift_ore_per_kwh: gridFeeOre || undefined,
-        kvartspris_elhandel: traderQuarterPrice,
+        elomrade: eff.selectedArea,
+        huvudsakring_a: eff.fuseAmps || undefined,
+        moms_pct: eff.vatRate || undefined,
+        momsregistrerad: eff.vatRegistered,
+        elnat_fast_ore_per_kwh: eff.gridFixedOre || undefined,
+        elnat_rorlig_pct: eff.gridPct || undefined,
+        elhandel_fast_ore_per_kwh: eff.traderFixedOre || undefined,
+        elhandel_rorlig_pct: eff.traderPct || undefined,
+        elnat_manadsavgift_kr: eff.gridMonthlyFee || undefined,
+        elnat_manadsavgift_nasta_sakring_kr: eff.nextFuseFee || undefined,
+        elnat_manadsavgift_lagre_sakring_kr: eff.lowerFuseFee || undefined,
+        installerad_kwp: eff.installedKwp || undefined,
+        elhandel_manadsavgift_kr: eff.traderMonthlyFee || undefined,
+        energiskatt_ore_per_kwh: eff.energyTaxOre || undefined,
+        natavgift_ore_per_kwh: eff.gridFeeOre || undefined,
+        kvartspris_elhandel: eff.traderQuarterPrice,
       };
       setResult(analysis);
       setDisplayMeta({
         filename: files.length === 1 ? files[0].name : `${files.length} filer (kombinerade)`,
-        area: selectedArea,
+        area: eff.selectedArea,
       });
       addLog("success", "Analys klar!");
 
       // Optional in-browser AI summary (uses the user's own OpenRouter key).
-      if (aiInsights) {
+      if (eff.aiInsights) {
         if (!aiKey.trim()) {
           addLog("warning", "AI-sammanfattning på, men ingen OpenRouter-nyckel angiven – hoppar över.");
         } else {
@@ -450,7 +501,7 @@ export default function Home() {
           try {
             const summary = await generateAiSummary(analysis, {
               apiKey: aiKey.trim(),
-              area: selectedArea,
+              area: eff.selectedArea,
               signal,
             });
             setAiSummary(summary);
@@ -493,7 +544,8 @@ export default function Home() {
     handleAnalyze();
   }, [selectedFiles, subscribe, email, handleAnalyze]);
 
-  // Load the bundled 15-minute sample file and run the analysis on it directly.
+  // Load the bundled 15-minute sample file and run the analysis on it directly, with a
+  // realistic, fully-configured set of example parameters (also applied to the settings UI).
   const handleTryExample = useCallback(async () => {
     setIsLoadingExample(true);
     try {
@@ -502,7 +554,28 @@ export default function Home() {
       const blob = await res.blob();
       const file = new File([blob], EXAMPLE_FILE_NAME, { type: "text/csv" });
       setSelectedFiles([file]);
-      await handleAnalyze([file]);
+      // Reflect the example parameters in the settings UI…
+      setSelectedArea(EXAMPLE_SETTINGS.selectedArea);
+      setFuseAmps(EXAMPLE_SETTINGS.fuseAmps);
+      setVatRate(EXAMPLE_SETTINGS.vatRate);
+      setVatRegistered(EXAMPLE_SETTINGS.vatRegistered);
+      setGridFixedOre(EXAMPLE_SETTINGS.gridFixedOre);
+      setGridPct(EXAMPLE_SETTINGS.gridPct);
+      setTraderFixedOre(EXAMPLE_SETTINGS.traderFixedOre);
+      setTraderPct(EXAMPLE_SETTINGS.traderPct);
+      setGridMonthlyFee(EXAMPLE_SETTINGS.gridMonthlyFee);
+      setNextFuseFee(EXAMPLE_SETTINGS.nextFuseFee);
+      setLowerFuseFee(EXAMPLE_SETTINGS.lowerFuseFee);
+      setInstalledKwp(EXAMPLE_SETTINGS.installedKwp);
+      setLatitude(EXAMPLE_SETTINGS.latitude);
+      setLongitude(EXAMPLE_SETTINGS.longitude);
+      setTraderMonthlyFee(EXAMPLE_SETTINGS.traderMonthlyFee);
+      setEnergyTaxOre(EXAMPLE_SETTINGS.energyTaxOre);
+      setGridFeeOre(EXAMPLE_SETTINGS.gridFeeOre);
+      setTraderQuarterPrice(EXAMPLE_SETTINGS.traderQuarterPrice);
+      setShowSelfConsumption(true);
+      // …and run with them directly (override avoids reading the just-set state).
+      await handleAnalyze([file], EXAMPLE_SETTINGS);
     } catch {
       toast.error("Kunde inte ladda exempelfilen. Försök igen.");
     } finally {
