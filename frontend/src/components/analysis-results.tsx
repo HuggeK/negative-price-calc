@@ -354,7 +354,7 @@ const TOTAL_REVENUE_INFO =
 const NEG_QUARTERS_INFO =
   "Antal kvartar (15 min) då spotpriset var negativt medan du exporterade – då betalar du för att mata ut el.";
 const NEG_COST_INFO =
-  "Vad de negativa kvartarna kostade dig totalt (exporterad energi × det negativa priset).";
+  "Vad det kostade dig totalt att exportera när ditt effektiva pris var under noll (spotpris under brytpunkten, inkl. förlustersättning/påslag och moms). Samma offset-medvetna belopp som ”uppskattad total förlust” längre ner – inte enbart råspot.";
 const EXPORT_COMP_INFO =
   "Vad du faktiskt får betalt för exporten = (spot + förlustersättning [elnät] + påslag/avdrag [elhandel]) × 1,25 (moms, om momsregistrerad). De rörliga delarna räknas på spotpriset i varje kvart du exporterade (produktionsviktat), inte på ett tidssnitt.";
 const FORECAST_INFO =
@@ -469,7 +469,6 @@ export function AnalysisResults({
 
   // Extract values from new nested structure or fallback to legacy flat structure
   const produktion = hero.produktion || {};
-  const exportForluster = hero.export_förluster || {};
   const tidsanalys = hero.tidsanalys || {};
   const tekniskaMatt = hero.tekniska_mått || {};
 
@@ -477,7 +476,10 @@ export function AnalysisResults({
   const totalExport = produktion.total_kwh ?? tekniskaMatt.production_kwh ?? hero.production_kwh;
   const totalRevenue = produktion.totala_intakter_sek ?? tekniskaMatt.revenue_sek ?? hero.revenue_sek;
   const totalIntervals = tidsanalys.totala_intervaller;
-  const negativeCost = exportForluster.kostnad_negativ_export_sek ?? tekniskaMatt.negative_value_sek ?? hero.negative_value_sek;
+  // Offset-aware: the cost of exporting when the *effective* price was below zero (spot under
+  // the break-even, incl. förlustersättning/påslag + moms) — same figure as the loss-quarters
+  // card. Absent loss block = no effective-loss quarters = 0 (not the raw spot cost).
+  const negativeCost = data.forlust_export?.total_forlust_sek ?? 0;
   const realizedPrice = produktion.genomsnittspris_erhållet_sek_per_kwh ?? tekniskaMatt.realized_price_wavg_sek_per_kwh ?? hero.realized_price_wavg_sek_per_kwh;
   const avgPrice = produktion.enkelt_snitt_pris_sek_per_kwh ?? tekniskaMatt.simple_average_price_sek_per_kwh ?? hero.simple_average_price_sek_per_kwh;
 
