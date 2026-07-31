@@ -6,7 +6,7 @@ import { Terminal } from "lucide-react";
 
 export interface LogEntry {
   timestamp: string;
-  type: "info" | "success" | "error" | "ai" | "progress";
+  type: "info" | "success" | "error" | "ai" | "progress" | "warning";
   message: string;
 }
 
@@ -25,6 +25,8 @@ function getLogColor(type: LogEntry["type"]): string {
       return "text-cyan-400";
     case "progress":
       return "text-yellow-400";
+    case "warning":
+      return "text-amber-400";
     default:
       return "text-muted-foreground";
   }
@@ -40,6 +42,8 @@ function getLogIcon(type: LogEntry["type"]): string {
       return "◆";
     case "progress":
       return "►";
+    case "warning":
+      return "!";
     default:
       return "○";
   }

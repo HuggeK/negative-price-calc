@@ -5,11 +5,38 @@ import { Card, CardContent } from "@sourceful-energy/ui";
 import { Upload, FileSpreadsheet, X } from "lucide-react";
 
 interface FileUploadProps {
-  onFileSelect: (file: File | null) => void;
-  selectedFile: File | null;
+  onFilesSelect: (files: File[]) => void;
+  selectedFiles: File[];
 }
 
-export function FileUpload({ onFileSelect, selectedFile }: FileUploadProps) {
+function isValidFile(file: File): boolean {
+  const validTypes = [
+    "text/csv",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-excel.sheet.macroEnabled.12",
+  ];
+  const validExtensions = [".csv", ".xlsx", ".xls", ".xlsm"];
+  const extension = file.name.toLowerCase().slice(file.name.lastIndexOf("."));
+  return validTypes.includes(file.type) || validExtensions.includes(extension);
+}
+
+/** Append valid files, skipping ones already chosen (by name + size). */
+function mergeFiles(existing: File[], incoming: File[]): File[] {
+  const valid = incoming.filter(isValidFile);
+  const seen = new Set(existing.map((f) => `${f.name}:${f.size}`));
+  const merged = [...existing];
+  for (const f of valid) {
+    const key = `${f.name}:${f.size}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      merged.push(f);
+    }
+  }
+  return merged;
+}
+
+export function FileUpload({ onFilesSelect, selectedFiles }: FileUploadProps) {
   const [isDragOver, setIsDragOver] = useState(false);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -26,73 +53,75 @@ export function FileUpload({ onFileSelect, selectedFile }: FileUploadProps) {
     (e: React.DragEvent) => {
       e.preventDefault();
       setIsDragOver(false);
-      const file = e.dataTransfer.files[0];
-      if (file && isValidFile(file)) {
-        onFileSelect(file);
-      }
+      onFilesSelect(mergeFiles(selectedFiles, Array.from(e.dataTransfer.files)));
     },
-    [onFileSelect]
+    [onFilesSelect, selectedFiles]
   );
 
   const handleFileInput = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file && isValidFile(file)) {
-        onFileSelect(file);
-      }
+      onFilesSelect(mergeFiles(selectedFiles, Array.from(e.target.files ?? [])));
+      e.target.value = ""; // allow re-selecting the same file after removal
     },
-    [onFileSelect]
+    [onFilesSelect, selectedFiles]
   );
 
-  const isValidFile = (file: File) => {
-    const validTypes = [
-      "text/csv",
-      "application/vnd.ms-excel",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    ];
-    const validExtensions = [".csv", ".xlsx", ".xls"];
-    const extension = file.name.toLowerCase().slice(file.name.lastIndexOf("."));
-    return validTypes.includes(file.type) || validExtensions.includes(extension);
-  };
+  const removeFile = useCallback(
+    (index: number) => {
+      onFilesSelect(selectedFiles.filter((_, i) => i !== index));
+    },
+    [onFilesSelect, selectedFiles]
+  );
 
-  const removeFile = useCallback(() => {
-    onFileSelect(null);
-  }, [onFileSelect]);
+  const hasFiles = selectedFiles.length > 0;
 
   return (
     <div className="space-y-2">
       <label className="text-sm font-medium text-foreground">
-        Elförbrukningsdata (CSV eller Excel)
+        Elproduktions-/exportdata (CSV eller Excel)
       </label>
       <Card
-        className={`border-2 border-dashed transition-colors cursor-pointer ${
+        className={`border-2 border-dashed transition-colors ${
           isDragOver
             ? "border-primary bg-primary/5"
-            : selectedFile
+            : hasFiles
             ? "border-primary/50 bg-primary/5"
             : "border-muted-foreground/25 hover:border-muted-foreground/50"
         }`}
       >
         <CardContent className="p-6">
-          {selectedFile ? (
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-primary/10">
-                  <FileSpreadsheet className="h-6 w-6 text-primary" />
+          {hasFiles ? (
+            <div className="space-y-3">
+              {selectedFiles.map((file, i) => (
+                <div key={`${file.name}:${file.size}`} className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-primary/10">
+                      <FileSpreadsheet className="h-6 w-6 text-primary" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-foreground">{file.name}</p>
+                      <p className="text-sm text-muted-foreground">{(file.size / 1024).toFixed(1)} KB</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => removeFile(i)}
+                    className="p-1 rounded-full hover:bg-muted transition-colors"
+                    aria-label={`Ta bort ${file.name}`}
+                  >
+                    <X className="h-5 w-5 text-muted-foreground" />
+                  </button>
                 </div>
-                <div>
-                  <p className="font-medium text-foreground">{selectedFile.name}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {(selectedFile.size / 1024).toFixed(1)} KB
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={removeFile}
-                className="p-1 rounded-full hover:bg-muted transition-colors"
+              ))}
+              <label
+                className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-muted-foreground/30 py-2 text-sm text-muted-foreground hover:border-muted-foreground/60"
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
               >
-                <X className="h-5 w-5 text-muted-foreground" />
-              </button>
+                <Upload className="h-4 w-4" />
+                Lägg till fler filer (t.ex. fler 3-månaderschunkar)
+                <input type="file" accept=".csv,.xlsx,.xls,.xlsm" multiple onChange={handleFileInput} className="hidden" />
+              </label>
             </div>
           ) : (
             <label
@@ -105,19 +134,17 @@ export function FileUpload({ onFileSelect, selectedFile }: FileUploadProps) {
                 <Upload className="h-6 w-6 text-muted-foreground" />
               </div>
               <div className="text-center">
-                <p className="font-medium text-foreground">
-                  Klicka för att välja din fil från nätbolaget
-                </p>
+                <p className="font-medium text-foreground">Klicka för att välja dina filer från nätbolaget</p>
                 <p className="text-sm text-muted-foreground">
-                  Eller dra och släpp din CSV/Excel-fil här
+                  Eller dra och släpp CSV/Excel här. Du kan välja flera filer – nätbolag delar ofta upp 15-minutersdata i
+                  3-månaderschunkar.
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Obs: data före 2025-10-01 tas bort automatiskt – spotpriserna var i timupplösning (60 min) innan dess,
+                  så äldre data går inte att jämföra rättvist mot 15-minuterspriser.
                 </p>
               </div>
-              <input
-                type="file"
-                accept=".csv,.xlsx,.xls"
-                onChange={handleFileInput}
-                className="hidden"
-              />
+              <input type="file" accept=".csv,.xlsx,.xls,.xlsm" multiple onChange={handleFileInput} className="hidden" />
             </label>
           )}
         </CardContent>

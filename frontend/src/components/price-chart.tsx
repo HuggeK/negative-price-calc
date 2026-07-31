@@ -2,8 +2,11 @@
 
 import { useMemo } from "react";
 import {
-  AreaChart,
+  ComposedChart,
+  Bar,
   Area,
+  Line,
+  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -14,49 +17,61 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@sourceful-energy/ui";
 import { TrendingUp } from "lucide-react";
 
-interface MonthlyData {
-  period?: string;
-  month?: string;
+interface DailyData {
+  date?: string;
   production_kwh?: number;
   revenue_sek?: number;
-  avg_price_sek_per_kwh?: number;
-  negative_hours?: number;
-  negative_kwh?: number;
   negative_value_sek?: number;
+  spot_sunlit_sek_per_kwh?: number;
 }
 
 interface PriceChartProps {
-  monthlyData?: MonthlyData[];
+  dailyData?: DailyData[];
   title?: string;
 }
 
-export function PriceChart({ monthlyData, title = "Månatlig översikt" }: PriceChartProps) {
+const MONTHS = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "okt", "nov", "dec"];
+
+/**
+ * Daily overview: net export value (SEK) bars (green/red) on the left axis, daily production
+ * (kWh) as a light-yellow background area on the right axis, and the daily spot price
+ * (öre/kWh) as a blue line. When SMHI STRÅNG sunlit-hour data is present the price line is the
+ * mean spot over the hours the sun was up; otherwise it falls back to the production-weighted
+ * spot you actually exported at.
+ */
+export function PriceChart({ dailyData, title = "Daglig översikt" }: PriceChartProps) {
+  const usesSunlit = useMemo(
+    () => !!dailyData?.some((d) => d.spot_sunlit_sek_per_kwh != null),
+    [dailyData]
+  );
   const chartData = useMemo(() => {
-    if (!monthlyData || monthlyData.length === 0) return [];
-
-    return monthlyData.map((item) => {
-      const period = item.period || item.month || "";
-      // Extract month name from period (e.g., "2024-01" -> "Jan 24")
-      const [year, month] = period.split("-");
-      const monthNames = ["Jan", "Feb", "Mar", "Apr", "Maj", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dec"];
-      const monthName = month ? monthNames[parseInt(month, 10) - 1] : "";
-      const shortYear = year ? year.slice(-2) : "";
-
+    if (!dailyData || dailyData.length === 0) return [];
+    return dailyData.map((item) => {
+      const date = item.date || "";
+      const [, m, d] = date.split("-");
+      const label = m && d ? `${parseInt(d, 10)} ${MONTHS[parseInt(m, 10) - 1]}` : date;
+      const prod = item.production_kwh || 0;
+      const ore =
+        item.spot_sunlit_sek_per_kwh != null
+          ? item.spot_sunlit_sek_per_kwh * 100
+          : prod > 0
+          ? ((item.revenue_sek || 0) / prod) * 100
+          : null;
       return {
-        name: `${monthName} ${shortYear}`,
-        fullPeriod: period,
-        production: item.production_kwh || 0,
+        name: label,
+        fullDate: date,
         revenue: item.revenue_sek || 0,
-        avgPrice: item.avg_price_sek_per_kwh || 0,
-        negativeHours: item.negative_hours || 0,
-        negativeCost: Math.abs(item.negative_value_sek || 0),
+        production: prod,
+        ore: ore != null ? Math.round(ore * 10) / 10 : null,
       };
     });
-  }, [monthlyData]);
+  }, [dailyData]);
 
   if (chartData.length === 0) {
     return null;
   }
+
+  const priceLineName = usesSunlit ? "snittspot per dag över soltimmarna" : "dagligt spotpris (snitt)";
 
   return (
     <Card>
@@ -69,33 +84,20 @@ export function PriceChart({ monthlyData, title = "Månatlig översikt" }: Price
       <CardContent>
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart
-              data={chartData}
-              margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-            >
-              <defs>
-                <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#00FF84" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#00FF84" stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="colorNegative" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
-                </linearGradient>
-              </defs>
+            <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-              <XAxis
-                dataKey="name"
-                stroke="#666"
-                fontSize={12}
-                tickLine={false}
-              />
+              <XAxis dataKey="name" stroke="#666" fontSize={12} tickLine={false} minTickGap={24} />
+              <YAxis yAxisId="left" stroke="#666" fontSize={12} tickLine={false} tickFormatter={(v) => `${Number(v).toFixed(0)}`} />
               <YAxis
-                stroke="#666"
+                yAxisId="right"
+                orientation="right"
+                stroke="#FDE68A"
                 fontSize={12}
                 tickLine={false}
-                tickFormatter={(value) => `${value.toFixed(0)}`}
+                tickFormatter={(v) => `${Number(v).toFixed(0)}`}
               />
+              {/* Hidden axis just to scale the price line (öre/kWh, different unit). */}
+              <YAxis yAxisId="price" hide domain={["auto", "auto"]} />
               <Tooltip
                 contentStyle={{
                   backgroundColor: "#1a1a1a",
@@ -104,45 +106,70 @@ export function PriceChart({ monthlyData, title = "Månatlig översikt" }: Price
                   fontSize: "12px",
                 }}
                 labelStyle={{ color: "#fff" }}
+                itemStyle={{ color: "#fff" }}
                 formatter={(value, name) => {
-                  const numValue = typeof value === "number" ? value : 0;
-                  if (name === "Intäkt") return [`${numValue.toFixed(0)} kr`, name];
-                  if (name === "Förlust") return [`${numValue.toFixed(0)} kr`, name];
-                  return [`${numValue}`, name];
+                  const v = typeof value === "number" ? value : 0;
+                  if (name === "Produktion") return [`${v.toFixed(1)} kWh`, name];
+                  if (name === priceLineName) return [`${v.toFixed(1)} öre/kWh`, name];
+                  return [`${v.toFixed(2)} kr`, name];
                 }}
               />
-              <ReferenceLine y={0} stroke="#666" />
+              <ReferenceLine yAxisId="left" y={0} stroke="#666" />
+              {/* Production in the background (light yellow), on the right kWh axis. */}
               <Area
+                yAxisId="right"
                 type="monotone"
-                dataKey="revenue"
-                name="Intäkt"
-                stroke="#00FF84"
-                fillOpacity={1}
-                fill="url(#colorRevenue)"
-                strokeWidth={2}
+                dataKey="production"
+                name="Produktion"
+                stroke="#FDE68A"
+                strokeOpacity={0.5}
+                fill="#FDE68A"
+                fillOpacity={0.18}
               />
-              <Area
+              {/* Net value, on the left SEK axis. */}
+              <Bar yAxisId="left" dataKey="revenue" name="Nettovärde" radius={[2, 2, 0, 0]}>
+                {chartData.map((entry, i) => (
+                  <Cell key={i} fill={entry.revenue >= 0 ? "#00FF84" : "#ef4444"} />
+                ))}
+              </Bar>
+              {/* Daily spot price (blue line), on the hidden price axis. */}
+              <Line
+                yAxisId="price"
                 type="monotone"
-                dataKey="negativeCost"
-                name="Förlust"
-                stroke="#ef4444"
-                fillOpacity={1}
-                fill="url(#colorNegative)"
+                dataKey="ore"
+                name={priceLineName}
+                stroke="#3b82f6"
                 strokeWidth={2}
+                dot={false}
+                activeDot={{ r: 4 }}
+                connectNulls
               />
-            </AreaChart>
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
-        <div className="flex justify-center gap-6 mt-4 text-sm">
+        <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 mt-4 text-sm">
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full bg-primary" />
-            <span className="text-muted-foreground">Intäkt (kr)</span>
+            <span className="text-muted-foreground">Positivt nettovärde (kr/dag)</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full bg-destructive" />
-            <span className="text-muted-foreground">Negativ export (kr)</span>
+            <span className="text-muted-foreground">Negativt nettovärde (kr/dag)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: "#FDE68A" }} />
+            <span className="text-muted-foreground">Produktion (kWh/dag, höger axel)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: "#3b82f6" }} />
+            <span className="text-muted-foreground">{priceLineName} (öre/kWh)</span>
           </div>
         </div>
+        <p className="mt-3 text-center text-sm text-muted-foreground">
+          {usesSunlit
+            ? "Snittspot per dag över soltimmarna (SMHI STRÅNG, instrålning > 0) – priset under fönstret då du faktiskt kan exportera. Linjen under noll = negativt pris under soltimmar."
+            : "Blå linje: produktionsviktat snittpris per dag (under noll = negativt pris medan du producerade). Tips: välj en plats i inställningarna för att basera snittet på soltimmar (SMHI STRÅNG)."}
+        </p>
       </CardContent>
     </Card>
   );

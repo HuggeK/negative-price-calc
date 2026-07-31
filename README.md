@@ -1,274 +1,135 @@
-# ⚡ Negative Price Calculator
+# Negative Price Calculator
 
-A simple web application to analyze electricity prices and solar production data, with focus on negative price detection and cost analysis for solar producers in Sweden.
+Analyze your solar export against historical Swedish spot prices — including negative prices — and see what your electricity was actually worth. The web app runs entirely in your browser; your production file never leaves your device.
 
-**[Quick Start →](QUICKSTART.md)** | **[Live Demo](http://localhost:8080)** (after running locally)
+**[Live app](https://srcfl.github.io/negative-price-calc/)**
 
-<img src="https://img.shields.io/badge/Python-3.12+-blue.svg" alt="Python 3.12+">
 <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License">
 <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome">
 
----
+## Overview
 
-## 🎯 What is this?
+When you have solar panels you sell excess electricity to the grid, but spot prices sometimes go negative — meaning you pay to export. Since the 60 öre/kWh tax credit ended on 1 January 2026, the spot price alone decides what your export is worth. Upload your meter export and the tool reports:
 
-When you have solar panels, you often sell excess electricity back to the grid. But sometimes electricity prices go **negative** - meaning you actually pay to export your energy! This tool helps you:
+- Total export and revenue at realized spot prices.
+- Negative-price exposure: quarters, kWh and cost of exporting at negative prices.
+- Grid-connection load: how often export was pinned at your main-fuse limit.
+- Effective export pay from both your elnätsbolag (förlustersättning) and elhandelsbolag (påslag/avdrag), each a fixed (öre/kWh) + variable (% of spot) part, plus VAT.
+- Loss-making quarters where the effective price fell below zero, with a chart and a table.
+- Self-consumption value: what a kWh is worth used yourself vs. exported.
+- Whether upgrading or downgrading the main fuse would pay off.
+- Optional Swedish AI summary, generated in the browser with your own key.
+- JSON / CSV export of the results.
 
-- 📊 **Analyze your production data** - Upload your solar production CSV/Excel file
-- 💸 **Detect negative price periods** - See when your export cost you money
-- 📈 **Visualize the impact** - Interactive charts showing monthly patterns
-- 🤖 **Get AI insights** (optional) - Swedish-language explanations of your analysis
-- 💾 **Export results** - Download detailed Excel reports
+## Features
 
-## ✨ Key Features
+- Private and serverless: all parsing, price-matching and analysis run client-side.
+- No API key for prices: uses the free [elprisetjustnu.se API](https://www.elprisetjustnu.se/elpris-api) (CORS-enabled, native 15-minute, prices in SEK).
+- Interval-aware: handles any mix of hourly / 15-minute / daily data via overlap allocation.
+- Swedish bidding zones SE1–SE4.
+- Grid-connection analysis: main-fuse flat-peak detection (3-phase, 400 V).
+- Export compensation per company (elnät + elhandel), each fixed (öre/kWh) + variable (% of spot) + VAT.
+- Loss-making quarters: count, chart and table of quarters exported below break-even.
+- Monthly forecast: expected net per full-data month after fixed monthly fees.
+- Fuse up/downgrade analysis: extra/lower subscription fee weighed against unlocked or clipped export.
+- Optional SMHI STRÅNG solar irradiance for sunlit-hour pricing and a rough potential-production estimate.
+- Inputs in öre/kWh; results show kronor for totals and öre for per-kWh values.
 
-- **🔌 No API keys required** - Uses free [Sourceful Price API](https://docs.sourceful.energy/developer/price-api)
-- **🌍 Webapp interface** - Simple drag-and-drop file upload
-- **🇸🇪 Swedish electricity areas** - Supports SE_1 through SE_4
-- **🤖 Optional AI explanations** - Add OpenAI key for AI-powered insights
-- **📊 Visual analytics** - Charts and metrics at a glance
-- **💾 Excel export** - Detailed analysis export
-- **🚀 Easy deployment** - Docker support included
+## Usage
 
-## 🚀 Quick Start
+1. Export your meter data as CSV from your grid/energy company's portal. 15-minute (quarter-hour) data is recommended; hourly and daily are detected automatically. Grid companies often cap 15-minute exports at ~3 months — upload several files and they are combined.
+2. Upload the file(s), or click **Prova med exempeldata** to run a bundled 15-minute sample.
+3. Choose your bidding zone (SE1–SE4).
+4. Optionally set the main fuse size, VAT, export compensation per company, self-consumption inputs, and a position for STRÅNG.
+5. Click **Analysera**. The report appears in the browser and can be downloaded as JSON or CSV.
 
-### Prerequisites
+Sample files are in [`python/data/samples/`](python/data/samples/); the bundled web example is [`frontend/public/exempel-15min.csv`](frontend/public/exempel-15min.csv). The browser app reads CSV (export Excel as CSV first); the Python CLI also reads Excel.
 
-- Python 3.12+
-- [uv](https://docs.astral.sh/uv/) package manager
+## Price data
 
-### Install & Run (3 steps!)
+Prices come from the free, no-key [elprisetjustnu.se API](https://www.elprisetjustnu.se/elpris-api) (CORS-enabled, so it works from the browser):
 
-```bash
-# 1. Clone the repository
-git clone https://github.com/srcfl/negative-price-calc.git
-cd negative-price-calc
-
-# 2. Install dependencies
-uv sync
-
-# 3. Start the webapp
-uv run python app.py
+```
+GET https://www.elprisetjustnu.se/api/v1/prices/{YYYY}/{MM}-{DD}_{ZONE}.json
 ```
 
-Open your browser and go to `http://localhost:8080` 🎉
+Values are returned in SEK/kWh (and EUR/kWh) at the market resolution — 15-minute from 2025-10-01, hourly before.
 
-**That's it!** No API keys needed for basic analysis.
+**Why not an ENTSO-E key in the browser?** ENTSO-E sends no CORS headers, so a static-site browser cannot read its responses, and any client-side key is publicly visible. The browser app therefore uses elprisetjustnu.se. To use an ENTSO-E key, run the Python CLI (`ENTSOE_API_KEY`), which runs locally where CORS does not apply.
 
-### Optional: Enable AI Explanations
-
-Want AI-powered insights? Just add your OpenAI API key:
-
-```bash
-# Copy environment template
-cp .env.example .env
-
-# Edit .env and add: OPENAI_API_KEY=your_key_here
-```
-
-Restart the webapp and AI explanations will appear automatically!
-
-## 🐳 Docker Deployment
-
-```bash
-# Build and run with docker-compose
-docker-compose up --build
-
-# Open http://localhost:8080
-```
-
-## 🚂 Railway Deployment
-
-Deploy to [Railway](https://railway.app) with one click:
-
-### Backend API
-
-1. Create new project on Railway
-2. Connect your GitHub repo
-3. Set root directory to `/` (project root)
-4. Add environment variables:
-   - `OPENAI_API_KEY` (optional, for AI insights)
-   - `CORS_ORIGINS` (your frontend URL, e.g., `https://your-frontend.railway.app`)
-
-### Frontend
-
-1. Create another service in the same project
-2. Set root directory to `/frontend`
-3. Add environment variable:
-   - `NEXT_PUBLIC_API_URL` (your backend URL, e.g., `https://your-backend.railway.app`)
-
-### Environment Variables for Railway
-
-| Variable | Service | Description |
-|----------|---------|-------------|
-| `OPENAI_API_KEY` | Backend | Optional - enables AI explanations |
-| `CORS_ORIGINS` | Backend | Frontend URL(s), comma-separated |
-| `NEXT_PUBLIC_API_URL` | Frontend | Backend API URL |
-
-## 📖 How to Use
-
-1. **Upload your data**: CSV or Excel file with solar production (hourly or daily)
-2. **Select electricity area**: SE_1, SE_2, SE_3, or SE_4
-3. **Click "Analysera"**: Results appear in seconds
-4. **Review insights**: See negative price impact, timing losses, and more
-5. **Export if needed**: Download Excel report for deeper analysis
-
-### Supported File Formats
-
-The tool intelligently handles various CSV/Excel formats. Your file should have:
-- **Timestamp/Date column**: DateTime or date values
-- **Production column**: Energy produced in kWh
-
-Common column names are automatically detected (timestamp, date, production, kwh, etc.)
-
-### Example Files
-
-Try it out with sample files in `data/samples/` directory!
-
-## 🏗️ Architecture
-
-### Simple Structure
+## Architecture
 
 ```
 negative-price-calc/
-├── app.py                      # Flask webapp (start here!)
-├── cli/                        # Command-line interface
-│   └── main.py                # CLI entrypoint
-├── core/                       # Analysis engine
-│   ├── price_fetcher.py       # Sourceful API integration
-│   ├── production_loader.py   # CSV/Excel parser
-│   └── price_analyzer.py      # Core analysis logic
-├── templates/                  # HTML templates
-│   └── index.html             # Main webapp UI
-└── data/                       # Data storage
-    ├── price_data.db          # SQLite price cache
-    └── samples/               # Example files
+├── frontend/                     # Deployed web app (Next.js, static export)
+│   ├── public/exempel-15min.csv  # Bundled 15-min example
+│   └── src/
+│       ├── app/page.tsx          # Upload UI, settings, results
+│       ├── components/           # Results cards, charts, terminal, upload
+│       └── lib/                  # Client-side engine:
+│           ├── parseProduction.ts  #   CSV parsing + 15-min validation + multi-file combine
+│           ├── prices.ts           #   elprisetjustnu.se price client
+│           ├── analyze.ts          #   interval-aware analysis (overlap allocation)
+│           ├── strang.ts           #   SMHI STRÅNG irradiance client (browser-only)
+│           └── aiSummary.ts        #   optional OpenRouter summary (BYO key)
+└── python/                       # Python library / CLI (feature parity)
+    ├── core/
+    │   ├── price_analyzer.py     #   interval-aware analysis + fuse up/downgrade
+    │   ├── intervals.py          #   granularity helpers + 15-min validation + combine
+    │   ├── price_fetcher.py      #   ENTSO-E fetch (ENTSOE_API_KEY) + SQLite cache
+    │   └── db_manager.py         #   price cache (resolution-aware)
+    ├── cli/main.py               #   se-cli command-line interface
+    └── data/samples/             #   Example production files
 ```
 
-### Technology Stack
+The web app is fully client-side and needs no backend. The Python CLI/library mirrors the analysis for offline/scripted use; STRÅNG is browser-only.
 
-- **Backend**: Flask + Python 3.12
-- **Price Data**: [Sourceful API](https://docs.sourceful.energy/developer/price-api) (free, no key required)
-- **AI**: OpenAI GPT (optional)
-- **Storage**: SQLite for price caching
-- **Frontend**: Modern HTML/CSS/JS with drag-and-drop
+## Run locally
 
-## 🇸🇪 Swedish Electricity Areas
-
-- **SE_1**: Northern Sweden (Luleå) - Typically lowest prices
-- **SE_2**: Central Sweden (Sundsvall)
-- **SE_3**: Central Sweden (Stockholm)
-- **SE_4**: Southern Sweden (Malmö) - Highest price volatility
-
-## 📊 What Analysis is Provided?
-
-### Key Metrics
-
-- **Total Production**: Your solar output (kWh)
-- **Total Revenue**: Income from electricity export
-- **Negative Price Hours**: When export cost money
-- **Timing Loss**: How much below market average you received
-- **Monthly Breakdown**: Visual charts showing patterns
-
-### AI Insights (Optional)
-
-With OpenAI API key configured:
-- Swedish-language explanation of your results
-- Key recommendations
-- Problem areas highlighted
-
-## 🛠️ Development
-
-### CLI Usage
-
-Want command-line access instead of webapp?
+Web app:
 
 ```bash
-# Analyze with CLI
+cd frontend
+npm install
+npm run dev          # http://localhost:3000
+```
+
+Python CLI (optional):
+
+```bash
+cd python
+uv sync
 uv run se-cli analyze your_file.csv --area SE_4 --json
-
-# With AI explanations
-uv run se-cli analyze your_file.csv --area SE_4 --json --ai-explainer
-
-# Inspect file format
-uv run se-cli inspect-production your_file.csv
+uv run se-cli analyze your_file.csv --area SE_4 --vat 25 --energy-tax 0.4282 --transmission-fee 0.25
 ```
 
-### Run Tests
+The CLI fetches prices from ENTSO-E (`ENTSOE_API_KEY`) or uses the bundled SQLite cache. See [`python/README.md`](python/README.md).
+
+## Deployment (GitHub Pages)
+
+GitHub Actions ([`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml)) builds `frontend/` and publishes `frontend/out` on every push to `main`. For a fork: enable Settings → Pages → Source: GitHub Actions, then push to `main` (the build sets `NEXT_PUBLIC_BASE_PATH=/<repo>`).
+
+## Tests
 
 ```bash
+# Python
+cd python
 uv run pytest
+
+# TypeScript engine (from repo root)
+node --experimental-strip-types frontend/scripts/test-analyze.mjs
 ```
 
-### Code Formatting
+## Contributing
 
-```bash
-uv run black .
-uv run isort .
-```
+Fork, create a feature branch, make the change (keep the TS engine and Python analyzer in parity), run the tests, and open a pull request.
 
-## 🤝 Contributing
+## License
 
-Contributions are welcome! This is an open source project for the solar community.
+MIT — see [LICENSE](LICENSE).
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+## Acknowledgments
 
-## 📝 Environment Variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `OPENAI_API_KEY` | Optional | Enables AI-powered explanations |
-| `DATABASE_PATH` | Optional | Custom SQLite database path (default: `data/price_data.db`) |
-| `CORS_ORIGINS` | Optional | Allowed frontend origins for CORS (default: `http://localhost:3000`) |
-| `PORT` | Optional | Server port (default: `8080`, Railway sets this automatically) |
-| `NEXT_PUBLIC_API_URL` | Frontend | Backend API URL for Next.js frontend |
-
-**Note**: Electricity price data comes from Sourceful API which requires no API key!
-
-## 🐛 Troubleshooting
-
-### Port 8080 in use?
-```bash
-# Run on different port
-uv run python -c "from app import app; app.run(host='0.0.0.0', port=5000)"
-```
-
-### File upload fails?
-- Check file size (max 16MB)
-- Ensure valid CSV or Excel format
-- Try with sample files in `data/samples/`
-
-### Analysis seems wrong?
-- Verify your electricity area is correct
-- Check that your file has proper date/production columns
-- Use `se-cli inspect-production` to validate file format
-
-## 📚 Resources
-
-- **Sourceful Price API**: https://docs.sourceful.energy/developer/price-api
-- **Nordic Energy Markets**: https://www.nordpoolgroup.com/
-- **Swedish Energy Agency**: https://www.energimyndigheten.se/
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🙏 Acknowledgments
-
-- Price data powered by [Sourceful Energy API](https://sourceful.energy)
-- Built for the solar producer community in Sweden
-- Inspired by real challenges facing solar panel owners
-
-## 📮 Support
-
-- 🐛 **Bug reports**: [Open an issue](https://github.com/srcfl/negative-price-calc/issues)
-- 💡 **Feature requests**: [Start a discussion](https://github.com/srcfl/negative-price-calc/discussions)
-- 📖 **Questions**: Check [QUICKSTART.md](QUICKSTART.md) or open an issue
-
----
-
-**Made with ❤️ for the solar energy community** | [GitHub](https://github.com/srcfl/negative-price-calc)
+- Price data from [elprisetjustnu.se](https://www.elprisetjustnu.se/elpris-api).
+- Solar irradiance from [SMHI STRÅNG](https://opendata.smhi.se/apidocs/strang/).
+- Built for the Swedish solar community by [Sourceful Energy](https://sourceful.energy).
